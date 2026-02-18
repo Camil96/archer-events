@@ -27,6 +27,9 @@ async function init() {
 init();
 
 function renderLogin(container) {
+  const base = import.meta.env.BASE_URL || '/';
+  const logoUrl = `${base}archer-logo.png`;
+
   container.innerHTML = `
     <div style="
       min-height:100vh;
@@ -46,54 +49,57 @@ function renderLogin(container) {
         color:#ffffff;
         box-shadow:0 18px 45px rgba(0,0,0,0.35);
       ">
-        <img src="/archer-logo.png" alt="Archer" style="height:40px;margin-bottom:20px;" />
+        <img id="login-logo" src="${logoUrl}" alt="Archer" style="height:40px;margin-bottom:20px;" />
+
         <h2 style="margin:0 0 8px;font-family:Inter,system-ui,-apple-system,sans-serif;font-weight:500;font-size:1.3rem;">
           Archer Events
         </h2>
+
         <p style="margin:0 0 24px;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:0.95rem;color:#a6b3c0;">
-          Vul je e-mailadres in om toegang te krijgen tot Archer Events.
+          Vul je e-mailadres in om toegang te krijgen.
         </p>
 
-        <input
-          id="login-email"
-          type="email"
-          autocomplete="email"
-          placeholder="jij@bedrijf.be"
-          style="
-            width:100%;
-            margin-bottom:12px;
-            padding:10px 12px;
-            border-radius:8px;
-            border:1px solid #444a55;
-            background:#1b1d22;
-            color:#ffffff;
-            font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:0.95rem;
-            outline:none;
-          "
-        />
+        <form id="login-form" style="margin:0;">
+          <input
+            id="login-email"
+            type="email"
+            autocomplete="email"
+            placeholder="jij@bedrijf.be"
+            required
+            style="
+              width:100%;
+              margin-bottom:12px;
+              padding:10px 12px;
+              border-radius:8px;
+              border:1px solid #444a55;
+              background:#1b1d22;
+              color:#ffffff;
+              font-family:Inter,system-ui,-apple-system,sans-serif;
+              font-size:0.95rem;
+              outline:none;
+            "
+          />
 
-        <button
-          id="login-btn"
-          class="btn-primary"
-          style="
-            width:100%;
-            justify-content:center;
-            margin-top:4px;
-            padding:10px 12px;
-            border-radius:999px;
-            border:none;
-            background:#4d73ff;
-            color:#ffffff;
-            font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:0.95rem;
-            font-weight:500;
-            cursor:pointer;
-            transition:background 0.15s ease-out, transform 0.1s ease-out;
-          "
-        >
-          Inloggen
-        </button>
+          <button
+            id="login-btn"
+            type="submit"
+            style="
+              width:100%;
+              margin-top:4px;
+              padding:10px 12px;
+              border-radius:999px;
+              border:none;
+              background:#4d73ff;
+              color:#ffffff;
+              font-family:Inter,system-ui,-apple-system,sans-serif;
+              font-size:0.95rem;
+              font-weight:500;
+              cursor:pointer;
+            "
+          >
+            Inloggen
+          </button>
+        </form>
 
         <p id="login-success" style="
           display:none;
@@ -117,16 +123,20 @@ function renderLogin(container) {
     </div>
   `;
 
+  // Als logo-pad fout is, verberg hem i.p.v. een broken image.
+  const logoEl = container.querySelector('#login-logo');
+  logoEl.onerror = () => { logoEl.style.display = 'none'; };
+
+  const form = container.querySelector('#login-form');
   const btn = container.querySelector('#login-btn');
   const emailInput = container.querySelector('#login-email');
   const successEl = container.querySelector('#login-success');
 
-  btn.onclick = async () => {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); // Enter = submit, maar we houden controle in JS.
+
     const email = emailInput.value.trim();
-    if (!email) {
-      // Geen foutmeldingen tonen, gewoon niets doen als leeg.
-      return;
-    }
+    if (!email) return;
 
     btn.disabled = true;
     btn.textContent = 'Bezig...';
@@ -134,22 +144,23 @@ function renderLogin(container) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: 'https://archer-events.vercel.app',
+        // Werkt op localhost én op Vercel, zolang die origin in Supabase Redirect URLs staat.
+        emailRedirectTo: window.location.origin,
       },
     });
 
-    // Ook bij error houden we de UI simpel: geen fouttekst.
     if (error) {
       btn.disabled = false;
       btn.textContent = 'Inloggen';
       return;
     }
 
-    // Succes: verberg input + knop, toon "Check je mailbox."
-    emailInput.style.display = 'none';
-    btn.style.display = 'none';
+    // Succes: verberg form, toon boodschap.
+    form.style.display = 'none';
     successEl.style.display = 'block';
-  };
+  });
 }
+
+
 
 
