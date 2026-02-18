@@ -36,34 +36,34 @@ function renderLogin(container) {
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:24px;
+      padding:32px;
       background:#f4f4f4;
     ">
       <div class="card login-card" style="
         width:100%;
-        max-width:480px;
-        padding:44px 34px 26px;
-        border-radius:22px;
+        max-width:560px;
+        padding:58px 42px 34px;
+        border-radius:26px;
         background:#ffffff;
         color:#000000;
         border:1px solid rgba(45,48,54,0.10);
-        box-shadow:0 22px 60px rgba(0,0,0,0.12);
+        box-shadow:0 26px 70px rgba(0,0,0,0.12);
       ">
         <div style="
           display:flex;
           flex-direction:column;
           align-items:center;
           text-align:center;
-          gap:18px;
+          gap:28px;
         ">
           <img
             id="login-logo"
             src="${logoUrl}"
             alt="Archer"
             style="
-              height:104px;
+              height:clamp(240px, 30vw, 420px);
               width:auto;
-              max-width:92%;
+              max-width:100%;
               object-fit:contain;
               display:block;
               margin:0 auto;
@@ -73,14 +73,20 @@ function renderLogin(container) {
           <p style="
             margin:0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:1.05rem;
-            line-height:1.45;
+            font-size:1.1rem;
+            line-height:1.55;
             color:#2d3036;
           ">
             Vul je e-mailadres in om toegang te krijgen.
           </p>
 
-          <form id="login-form" style="width:100%; margin:0; display:flex; flex-direction:column; gap:14px;">
+          <form id="login-form" style="
+            width:100%;
+            margin:0;
+            display:flex;
+            flex-direction:column;
+            gap:18px;
+          ">
             <input
               id="login-email"
               type="email"
@@ -89,13 +95,13 @@ function renderLogin(container) {
               required
               style="
                 width:100%;
-                padding:14px 14px;
-                border-radius:12px;
+                padding:16px 16px;
+                border-radius:14px;
                 border:1px solid rgba(45,48,54,0.18);
                 background:#ffffff;
                 color:#000000;
                 font-family:Inter,system-ui,-apple-system,sans-serif;
-                font-size:1rem;
+                font-size:1.05rem;
                 outline:none;
               "
             />
@@ -105,13 +111,13 @@ function renderLogin(container) {
               type="submit"
               style="
                 width:100%;
-                padding:14px 14px;
+                padding:16px 16px;
                 border-radius:999px;
                 border:none;
                 background:#4d73ff;
                 color:#ffffff;
                 font-family:Inter,system-ui,-apple-system,sans-serif;
-                font-size:1rem;
+                font-size:1.05rem;
                 font-weight:500;
                 cursor:pointer;
               "
@@ -124,16 +130,16 @@ function renderLogin(container) {
             display:none;
             margin:0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:1.05rem;
+            font-size:1.1rem;
             color:#2d3036;
           ">
             Check je mailbox.
           </p>
 
           <p style="
-            margin:10px 0 0;
+            margin:6px 0 0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:0.9rem;
+            font-size:0.95rem;
             color:rgba(45,48,54,0.75);
           ">
             Vragen? Mail <a href="mailto:camilsahnoune@gmail.com" style="color:#4d73ff;text-decoration:none;">camilsahnoune@gmail.com</a>
@@ -143,7 +149,6 @@ function renderLogin(container) {
     </div>
   `;
 
-  // Als het logo-pad fout is, verberg broken image.
   const logoEl = container.querySelector('#login-logo');
   logoEl.onerror = () => { logoEl.style.display = 'none'; };
 
@@ -152,8 +157,10 @@ function renderLogin(container) {
   const emailInput = container.querySelector('#login-email');
   const successEl = container.querySelector('#login-success');
 
+  emailInput.focus();
+
   form.addEventListener('submit', async (e) => {
-    e.preventDefault(); // Enter werkt nu.
+    e.preventDefault(); // Enter werkt
 
     const email = emailInput.value.trim();
     if (!email) return;
