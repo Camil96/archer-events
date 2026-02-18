@@ -49,7 +49,7 @@ function renderLogin(container) {
         border:1px solid rgba(45,48,54,0.10);
         box-shadow:0 26px 70px rgba(0,0,0,0.12);
       ">
-        <div style="
+        <div id="login-stack" style="
           display:flex;
           flex-direction:column;
           align-items:center;
@@ -70,7 +70,6 @@ function renderLogin(container) {
             "
           />
 
-          <!-- Dit blok wordt na submit vervangen door 'Check je mailbox.' -->
           <p id="login-headline" style="
             margin:0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
@@ -125,7 +124,7 @@ function renderLogin(container) {
             </button>
           </form>
 
-          <p style="
+          <p id="login-footer" style="
             margin:6px 0 0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
             font-size:0.95rem;
@@ -143,13 +142,14 @@ function renderLogin(container) {
 
   const headlineEl = container.querySelector('#login-headline');
   const form = container.querySelector('#login-form');
+  const footer = container.querySelector('#login-footer');
   const btn = container.querySelector('#login-btn');
   const emailInput = container.querySelector('#login-email');
 
   emailInput.focus();
 
   form.addEventListener('submit', async (e) => {
-    e.preventDefault(); // Enter werkt
+    e.preventDefault();
 
     const email = emailInput.value.trim();
     if (!email) return;
@@ -159,9 +159,7 @@ function renderLogin(container) {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
+      options: { emailRedirectTo: window.location.origin },
     });
 
     if (error) {
@@ -170,8 +168,10 @@ function renderLogin(container) {
       return;
     }
 
-    // Na succesvolle submit: alleen "Check je mailbox." onder het logo.
+    // Resultaat na submit: alleen logo + "Check je mailbox."
     headlineEl.textContent = 'Check je mailbox.';
     form.style.display = 'none';
+    footer.style.display = 'none';
   });
 }
+
