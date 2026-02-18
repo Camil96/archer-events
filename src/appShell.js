@@ -1,0 +1,727 @@
+import { supabase } from "./supabaseClient.js";
+import {
+  listEvents, createEvent, updateEvent, deleteEvent,
+  listTasks, createTask, updateTask, deleteTask,
+  listSubtasks, createSubtask, updateSubtask, deleteSubtask,
+  listParticipants, addParticipant, updateParticipant, deleteParticipant,
+  listAttachments, addAttachment, deleteAttachment,
+  listBrands, createBrand, updateBrand,
+  listAvailableUsers, listAuditLog, getDashboardStats,
+  assignTask, unassignTask
+} from "./store.js";
+import { renderCalendar } from "./calendar.js";
+import { renderTimeline } from "./timeline.js";
+import { esc, formatDate, formatDateTime, downloadCSV } from "./utils.js";
+
+// ─── GLOBAL STATE ───────────────────────────────────────────
+let activePage = 'Dashboard';
+let rootEl;
+let filters = { brand: '', search: '', period: '' };
+
+// ─── APP SHELL ───────────────────────────────────────────────
+export function renderAppShell(root, session) {
+  rootEl = root;
+  render();
+}
+
+async function render() {
+  const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
+
+  rootEl.innerHTML = `
+    <div class="app-layout">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo"><img src="/logo-archer.png" alt="Archer" onerror="this.style.display='none'"></div>
+        
+        <div class="nav-section">
+          <div class="nav-label">Overzichten</div>
+          <a class="nav-item ${activePage === 'Dashboard' ? 'active' : ''}" data-page="Dashboard"><span class="nav-icon">📊</span>Dashboard</a>
+          <a class="nav-item ${activePage === 'Calendar' ? 'active' : ''}" data-page="Calendar"><span class="nav-icon">📅</span>Kalender</a>
+          <a class="nav-item ${activePage === 'Timeline' ? 'active' : ''}" data-page="Timeline"><span class="nav-icon">⏳</span>Tijdlijn</a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-label">Contexten</div>
+          <a class="nav-item ${activePage === 'Academy' ? 'active' : ''}" data-page="Academy"><span class="nav-icon">🎓</span>Academy</a>
+          <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>Invest</a>
+          <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>Fund</a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-label">Systeem</div>
+          <a class="nav-item ${activePage === 'Admin' ? 'active' : ''}" data-page="Admin"><span class="nav-icon">⚙️</span>Instellingen</a>
+        </div>
+
+        <div class="sidebar-footer">
+          <button id="logout" class="btn-ghost" style="color:var(--danger);width:100%;text-align:left;">↪ Uitloggen</button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <div class="wrap">
+          <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
+              <h1>${activePage}</h1>
+            </div>
+            ${isListView || activePage === 'Calendar' ? `
+              <div style="display:flex;gap:8px;">
+                <button id="export-csv" class="btn-secondary">⬇ Export CSV</button>
+                <button id="add-event" class="btn-primary">+ Nieuw event</button>
+              </div>` : ''}
+          </div>
+          <div id="content-area"></div>
+        </div>
+      </main>
+    </div>`;
+
+  // Navigation handlers
+  rootEl.querySelectorAll('.nav-item').forEach(el => el.onclick = () => {
+    activePage = el.dataset.page;
+    // Reset filters when switching main views, but keep brand if on brand page
+    filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
+    render();
+  });
+
+  // Logout
+  rootEl.querySelector('#logout').onclick = async () => {
+    await supabase.auth.signOut();
+    window.location.reload();
+  };
+
+  // Sidebar toggle for mobile
+  rootEl.querySelector('#sidebar-toggle').onclick = () => {
+    document.getElementById('sidebar').classList.toggle('sidebar-open');
+  };
+
+  // Add event
+  const addBtn = rootEl.querySelector('#add-event');
+  if (addBtn) addBtn.onclick = () => openModal(null);
+
+  // Export Events CSV
+  const exportBtn = rootEl.querySelector('#export-csv');
+  if (exportBtn) exportBtn.onclick = async () => {
+    const events = await listEvents(filters);
+    downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  loadContent();
+}
+
+// ─── CONTENT LOADER ──────────────────────────────────────────
+async function loadContent() {
+  const container = rootEl.querySelector('#content-area');
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+
+  try {
+    if (activePage === 'Admin') {
+      await renderAdmin(container);
+    } else if (activePage === 'Calendar') {
+      const events = await listEvents();
+      renderCalendar(container, events, (ev) => openModal(ev));
+    } else if (activePage === 'Timeline') {
+      const events = await listEvents();
+      renderTimeline(container, events, (ev) => openModal(ev));
+    } else if (activePage === 'Dashboard') {
+      await renderDashboard(container);
+    } else {
+      // Brand pages
+      filters.brand = activePage;
+      const events = await listEvents(filters);
+      renderFilters(container, events);
+    }
+  } catch (e) {
+    container.innerHTML = `<div class="card error-card"><p>⚠ Fout bij laden: ${esc(e.message)}</p></div>`;
+  }
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────
+async function renderDashboard(container) {
+  const [stats, events] = await Promise.all([
+    getDashboardStats(),
+    listEvents(filters)
+  ]);
+
+  container.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-num">${stats.totalEvents}</div><div class="stat-label">Events dit jaar</div></div>
+      <div class="stat-card"><div class="stat-num">${stats.upcomingEvents}</div><div class="stat-label">Komende 30 dagen</div></div>
+      <div class="stat-card"><div class="stat-num">${stats.confirmedParticipants}</div><div class="stat-label">Bevestigde deelnemers</div></div>
+      <div class="stat-card"><div class="stat-num">${stats.openTasks}</div><div class="stat-label">Open taken</div></div>
+    </div>`;
+
+  renderFilters(container, events);
+}
+
+// ─── FILTERS ─────────────────────────────────────────────────
+function renderFilters(container, initialEvents) {
+  const filterSection = document.createElement('div');
+  filterSection.innerHTML = `
+    <div class="filter-bar">
+      <input type="text" id="f-search" placeholder="🔍 Zoeken op titel..." value="${esc(filters.search)}" class="filter-input">
+      ${activePage === 'Dashboard' ? `
+      <select id="f-brand" class="filter-select">
+        <option value="">Alle merken</option>
+        <option value="Academy" ${filters.brand === 'Academy' ? 'selected' : ''}>Academy</option>
+        <option value="Invest" ${filters.brand === 'Invest' ? 'selected' : ''}>Invest</option>
+        <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>Fund</option>
+      </select>` : ''}
+      <select id="f-period" class="filter-select">
+        <option value="">Alle periodes</option>
+        <option value="month" ${filters.period === 'month' ? 'selected' : ''}>Deze maand</option>
+        <option value="quarter" ${filters.period === 'quarter' ? 'selected' : ''}>Dit kwartaal</option>
+        <option value="year" ${filters.period === 'year' ? 'selected' : ''}>Dit jaar</option>
+      </select>
+    </div>
+    <div id="event-list-area"></div>`;
+
+  container.appendChild(filterSection);
+  const listArea = container.querySelector('#event-list-area');
+  renderEventList(listArea, initialEvents);
+
+  const applyFilters = async () => {
+    filters.search = container.querySelector('#f-search').value;
+    if (activePage === 'Dashboard') {
+      filters.brand = container.querySelector('#f-brand').value;
+    }
+    filters.period = container.querySelector('#f-period').value;
+
+    listArea.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+    const events = await listEvents(filters);
+    renderEventList(listArea, events);
+  };
+
+  container.querySelector('#f-search').oninput = applyFilters;
+  if (activePage === 'Dashboard') container.querySelector('#f-brand').onchange = applyFilters;
+  container.querySelector('#f-period').onchange = applyFilters;
+}
+
+// ─── EVENT LIST ───────────────────────────────────────────────
+function renderEventList(container, events) {
+  if (events.length === 0) {
+    container.innerHTML = `
+      <div class="card empty-card" style="text-align:center;padding:60px 20px;">
+        <div style="font-size:3rem;margin-bottom:16px;">📂</div>
+        <h3>Geen resultaten</h3>
+        <p class="muted">Pas je filters aan of maak een nieuw event.</p>
+      </div>`;
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'events-grid';
+
+  events.forEach(ev => {
+    const el = document.createElement('div');
+    el.className = 'card event-card';
+    const brandColor = ev.brand === 'Invest' ? '#10B981' : ev.brand === 'Fund' ? '#F59E0B' : 'var(--primary)';
+    el.style.borderTop = `4px solid ${brandColor}`;
+
+    el.innerHTML = `
+      <div class="event-card-title">${esc(ev.title)}</div>
+      <div class="event-card-meta">
+        <span>📅 ${formatDate(ev.start_at)}</span>
+        <span>🕒 ${new Date(ev.start_at).toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+      <div class="event-card-meta">📍 ${esc(ev.location || 'Nog te bepalen')}</div>
+      <div class="event-card-footer">
+        <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(ev.brand)}</span>
+        ${ev.expected_attendance ? `<span class="muted" style="font-size:0.8rem;">👥 ${ev.expected_attendance} verwacht</span>` : ''}
+      </div>`;
+
+    el.onclick = () => openModal(ev);
+    grid.appendChild(el);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(grid);
+}
+
+// ─── ADMIN / SETTINGS ──────────────────────────────────────────
+async function renderAdmin(container) {
+  const [{ data: { user } }, brands, auditLog] = await Promise.all([
+    supabase.auth.getUser(),
+    listBrands().catch(() => []),
+    listAuditLog(20).catch(() => [])
+  ]);
+
+  container.innerHTML = `
+    <div class="admin-grid">
+      <section class="card">
+        <h3>Mijn profiel</h3>
+        <div style="margin-top:20px;">
+          <label>Email adres</label>
+          <input disabled value="${esc(user?.email || '')}">
+          <label style="margin-top:16px;">User ID</label>
+          <input disabled value="${esc(user?.id || '')}">
+          <div style="margin-top:16px;">
+            <label>Rol</label>
+            <span class="badge badge-green">Beheerder</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>Merken beheer</h3>
+          <button id="add-brand-btn" class="btn-secondary btn-sm">+ Merk</button>
+        </div>
+        <div id="brand-list" style="margin-top:16px;">
+          ${brands.length === 0 ? '<p class="muted">Geen merken geconfigureerd.</p>' : brands.map(b => `
+            <div class="brand-row">
+              <span class="brand-dot" style="background:${esc(b.color || '#ccc')};"></span>
+              <span style="flex:1;font-weight:600;">${esc(b.name)}</span>
+              <span class="badge ${b.active ? 'badge-green' : 'badge-gray'}">${b.active ? 'Actief' : 'Inactief'}</span>
+              <button class="btn-ghost toggle-brand" data-id="${b.id}" data-active="${b.active}">
+                ${b.active ? 'Deactiveer' : 'Activeer'}
+              </button>
+            </div>`).join('')}
+        </div>
+        <div id="brand-form" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+          <label>Nieuw merknaam</label>
+          <input id="new-brand-name" placeholder="Naam...">
+          <label style="margin-top:12px;">Merk kleur</label>
+          <div style="display:flex;gap:12px;">
+            <input type="color" id="new-brand-color" value="#2563EB" style="width:60px;height:40px;padding:2px;">
+            <button id="save-brand" class="btn-primary" style="flex:1;">Opslaan</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" style="grid-column:1/-1;">
+        <h3>Audit Log <span class="muted" style="font-weight:400;font-size:0.9rem;">- Laatste 20 acties</span></h3>
+        <div style="margin-top:20px;overflow-x:auto;">
+          <table class="audit-table">
+            <thead>
+              <tr><th>Datum</th><th>Gebruiker</th><th>Actie</th><th>Entiteit</th></tr>
+            </thead>
+            <tbody>
+              ${auditLog.map(log => `
+                <tr>
+                  <td class="muted">${formatDateTime(log.created_at)}</td>
+                  <td>User ID: ${esc(String(log.actor_user_id || 'System').slice(0, 8))}</td>
+                  <td><code>${esc(log.action)}</code></td>
+                  <td>${esc(log.entity_type)} (${esc(String(log.entity_id || '').slice(0, 8))})</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+          ${auditLog.length === 0 ? '<p class="muted" style="padding:20px;text-align:center;">Geen records gevonden.</p>' : ''}
+        </div>
+      </section>
+    </div>`;
+
+  // Admin handlers
+  container.querySelector('#add-brand-btn').onclick = () => {
+    const form = container.querySelector('#brand-form');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  };
+
+  container.querySelectorAll('.toggle-brand').forEach(btn => btn.onclick = async () => {
+    const id = btn.dataset.id;
+    const active = btn.dataset.active === 'true';
+    await updateBrand(id, { active: !active });
+    renderAdmin(container);
+  });
+
+  container.querySelector('#save-brand').onclick = async () => {
+    const name = container.querySelector('#new-brand-name').value.trim();
+    const color = container.querySelector('#new-brand-color').value;
+    if (!name) return;
+    await createBrand({ name, color, active: true });
+    renderAdmin(container);
+  };
+}
+
+// ─── MODAL ───────────────────────────────────────────────────
+async function openModal(event) {
+  const isEdit = !!event;
+  const availableUsers = await listAvailableUsers().catch(() => []);
+  const userMap = Object.fromEntries(availableUsers.map(u => [u.id, u.full_name || u.email]));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const brands = ['Academy', 'Invest', 'Fund'];
+  const brandOptions = brands.map(b => `<option value="${b}" ${(event?.brand || 'Academy') === b ? 'selected' : ''}>${b}</option>`).join('');
+
+  overlay.innerHTML = `
+    <div class="modal modal-large">
+      <div class="modal-header">
+        <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
+        <button class="btn-ghost" id="m-close">✕</button>
+      </div>
+      
+      <div class="tabs">
+        <div class="tab active" data-tab="details">📋 Info</div>
+        ${isEdit ? `
+        <div class="tab" data-tab="participants">👥 Deelnemers</div>
+        <div class="tab" data-tab="tasks">✅ Taken</div>
+        <div class="tab" data-tab="attachments">📎 Bijlagen</div>` : ''}
+      </div>
+
+      <div class="modal-body">
+        <div id="tab-details">
+          <div class="grid-2">
+            <div><label>Evenement titel *</label><input id="m-title" value="${esc(event?.title || '')}"></div>
+            <div><label>Merk</label><select id="m-brand">${brandOptions}</select></div>
+          </div>
+          <div class="grid-2" style="margin-top:16px;">
+            <div><label>Start datum & tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
+            <div><label>Eind datum & tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
+          </div>
+          <div class="grid-2" style="margin-top:16px;">
+            <div><label>Locatie naam</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
+            <div><label>Tijdzone</label><select id="m-tz">
+              <option value="Europe/Brussels" ${(event?.timezone || 'Europe/Brussels') === 'Europe/Brussels' ? 'selected' : ''}>Europe/Brussels</option>
+              <option value="UTC" ${event?.timezone === 'UTC' ? 'selected' : ''}>UTC</option>
+            </select></div>
+          </div>
+          <div style="margin-top:16px;"><label>Locatie URL (Maps / Online link)</label><input id="m-loc-url" value="${esc(event?.location_url || '')}" placeholder="https://..."></div>
+          <div class="grid-2" style="margin-top:16px;">
+            <div><label>Maximale capaciteit</label><input type="number" id="m-cap" value="${event?.capacity || ''}"></div>
+            <div><label>Verwacht aantal gasten</label><input type="number" id="m-exp" value="${event?.expected_attendance || ''}"></div>
+          </div>
+          <div style="margin-top:16px;"><label>Omschrijving (extern)</label><textarea id="m-desc" rows="3">${esc(event?.description || '')}</textarea></div>
+          <div style="margin-top:16px;"><label>Interne notities</label><textarea id="m-notes" rows="2">${esc(event?.notes_internal || '')}</textarea></div>
+        </div>
+
+        ${isEdit ? `
+        <div id="tab-participants" style="display:none;"></div>
+        <div id="tab-tasks" style="display:none;"></div>
+        <div id="tab-attachments" style="display:none;"></div>` : ''}
+      </div>
+
+      <div class="modal-footer">
+        ${isEdit ? `<button id="m-delete" class="btn-ghost" style="color:var(--danger);margin-right:auto;">🗑 Verwijder</button>` : ''}
+        <button id="m-cancel" class="btn-secondary">Annuleren</button>
+        <button id="m-save" class="btn-primary">Opslaan</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const close = () => { document.body.removeChild(overlay); loadContent(); };
+  overlay.querySelector('#m-close').onclick = close;
+  overlay.querySelector('#m-cancel').onclick = close;
+
+  // Modal Tab switching
+  overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
+    overlay.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    ['details', 'participants', 'tasks', 'attachments'].forEach(n => {
+      const el = overlay.querySelector(`#tab-${n}`);
+      if (el) el.style.display = 'none';
+    });
+    const view = overlay.querySelector(`#tab-${t.dataset.tab}`);
+    if (view) view.style.display = 'block';
+
+    if (t.dataset.tab === 'participants') renderParticipantsTab(view, event.id);
+    if (t.dataset.tab === 'tasks') renderTasksTab(view, event.id, availableUsers, userMap);
+    if (t.dataset.tab === 'attachments') renderAttachmentsTab(view, event.id);
+  });
+
+  // Save event
+  overlay.querySelector('#m-save').onclick = async () => {
+    const payload = {
+      title: overlay.querySelector('#m-title').value.trim(),
+      brand: overlay.querySelector('#m-brand').value,
+      start_at: overlay.querySelector('#m-start').value || null,
+      end_at: overlay.querySelector('#m-end').value || null,
+      location: overlay.querySelector('#m-loc').value,
+      location_url: overlay.querySelector('#m-loc-url').value,
+      capacity: parseInt(overlay.querySelector('#m-cap').value) || 0,
+      expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
+      timezone: overlay.querySelector('#m-tz').value,
+      description: overlay.querySelector('#m-desc').value,
+      notes_internal: overlay.querySelector('#m-notes').value,
+    };
+    if (!payload.title) return alert('Titel is verplicht');
+
+    try {
+      if (isEdit) await updateEvent(event.id, payload);
+      else await createEvent(payload);
+      close();
+    } catch (e) { alert(e.message); }
+  };
+
+  if (isEdit) {
+    overlay.querySelector('#m-delete').onclick = async () => {
+      if (confirm('Dit event definitief verwijderen?')) {
+        await deleteEvent(event.id);
+        close();
+      }
+    };
+  }
+}
+
+// ─── PARTICIPANTS TAB ─────────────────────────────────────────
+async function renderParticipantsTab(container, eventId) {
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const participants = await listParticipants(eventId);
+
+  const stats = {
+    confirmed: participants.filter(p => p.status === 'confirmed').length,
+    invited: participants.filter(p => p.status === 'invited').length,
+    declined: participants.filter(p => p.status === 'declined').length
+  };
+
+  container.innerHTML = `
+    <div class="participant-stats">
+      <span class="badge badge-green">✓ ${stats.confirmed} Bevestigd</span>
+      <span class="badge badge-yellow">✉ ${stats.invited} Uitgenodigd</span>
+      <span class="badge badge-red">✗ ${stats.declined} Afgemeld</span>
+      <button id="p-export-btn" class="btn-ghost btn-sm" style="margin-left:auto;">⬇ Export CSV</button>
+    </div>
+    
+    <div class="participant-add-form">
+      <input id="pn-name" placeholder="Naam *">
+      <input id="pn-email" placeholder="Email">
+      <input id="pn-company" placeholder="Bedrijf">
+      <input id="pn-role" placeholder="Rol / VIP">
+      <input id="pn-phone" placeholder="Telefoon">
+      <button id="pn-add" class="btn-primary">Voeg toe</button>
+    </div>
+
+    <input type="text" id="p-list-search" placeholder="🔍 Zoek in deelnemerslijst..." class="filter-input" style="margin-bottom:12px;width:100%;">
+    <div id="participants-list-rows" style="max-height:300px;overflow-y:auto;"></div>`;
+
+  const renderRows = (query = '') => {
+    const filtered = participants.filter(p =>
+      !query ||
+      (p.name || '').toLowerCase().includes(query.toLowerCase()) ||
+      (p.email || '').toLowerCase().includes(query.toLowerCase()) ||
+      (p.company || '').toLowerCase().includes(query.toLowerCase())
+    );
+
+    const list = container.querySelector('#participants-list-rows');
+    list.innerHTML = filtered.length === 0 ? '<p class="muted" style="padding:20px;text-align:center;">Geen deelnemers gevonden.</p>' : '';
+
+    filtered.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'participant-row';
+      row.innerHTML = `
+        <div class="participant-info">
+          <div class="participant-name">${esc(p.name)}</div>
+          <div class="muted" style="font-size:0.8rem;">
+            ${esc(p.email || '-')} ${p.company ? `· ${esc(p.company)}` : ''} ${p.role ? `· ${esc(p.role)}` : ''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <select class="p-status-select" data-id="${p.id}" style="font-size:0.85rem;padding:4px 8px;border:none;background:var(--border-light);font-weight:600;">
+            <option value="invited" ${p.status === 'invited' ? 'selected' : ''}>Uitgenodigd</option>
+            <option value="confirmed" ${p.status === 'confirmed' ? 'selected' : ''}>Bevestigd</option>
+            <option value="declined" ${p.status === 'declined' ? 'selected' : ''}>Afgewezen</option>
+          </select>
+          <button class="btn-ghost p-del-btn" data-id="${p.id}" style="color:var(--danger);padding:4px;">✕</button>
+        </div>`;
+
+      row.querySelector('.p-status-select').onchange = async (e) => {
+        await updateParticipant(p.id, { status: e.target.value });
+        renderParticipantsTab(container, eventId);
+      };
+      row.querySelector('.p-del-btn').onclick = async () => {
+        if (confirm('Deelnemer verwijderen?')) {
+          await deleteParticipant(p.id);
+          renderParticipantsTab(container, eventId);
+        }
+      };
+      list.appendChild(row);
+    });
+  };
+
+  renderRows();
+  container.querySelector('#p-list-search').oninput = (e) => renderRows(e.target.value);
+
+  container.querySelector('#pn-add').onclick = async () => {
+    const payload = {
+      event_id: eventId,
+      name: container.querySelector('#pn-name').value.trim(),
+      email: container.querySelector('#pn-email').value.trim(),
+      company: container.querySelector('#pn-company').value.trim(),
+      role: container.querySelector('#pn-role').value.trim(),
+      phone: container.querySelector('#pn-phone').value.trim(),
+      status: 'invited'
+    };
+    if (!payload.name) return alert('Naam is verplicht');
+    await addParticipant(payload);
+    renderParticipantsTab(container, eventId);
+  };
+
+  container.querySelector('#p-export-btn').onclick = () => {
+    downloadCSV(participants, `deelnemers-${eventId}.csv`);
+  };
+}
+
+// ─── TASKS TAB ────────────────────────────────────────────────
+async function renderTasksTab(container, eventId, availableUsers, userMap) {
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const tasks = await listTasks(eventId);
+
+  const userOpts = `<option value="">-- Toewijzen --</option>` +
+    availableUsers.map(u => `<option value="${u.id}">${esc(u.full_name || u.email)}</option>`).join('');
+
+  container.innerHTML = `
+    <div class="task-add-form">
+      <input id="tn-title" placeholder="Nieuwe taak titel..." style="grid-column: span 2;">
+      <input type="datetime-local" id="tn-due">
+      <select id="tn-prio">
+        <option value="low">Laag</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">Hoog</option>
+      </select>
+      <select id="tn-assign">${userOpts}</select>
+      <button id="tn-add" class="btn-primary" style="grid-column: span 5;">+ Taak toevoegen</button>
+    </div>
+    <div id="tasks-list-rows" style="margin-top:20px;"></div>`;
+
+  const listArea = container.querySelector('#tasks-list-rows');
+
+  const renderList = async () => {
+    const tasks = await listTasks(eventId);
+    listArea.innerHTML = tasks.length === 0 ? '<p class="muted" style="text-align:center;padding:20px;">Nog geen taken voor dit event.</p>' : '';
+
+    tasks.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'task-card';
+      const prioColor = t.priority === 'high' ? 'var(--danger)' : t.priority === 'medium' ? 'var(--warning)' : 'var(--text-muted)';
+      card.style.borderLeft = `4px solid ${t.status === 'done' ? 'var(--secondary)' : prioColor}`;
+
+      const assigneeName = t.assignee_user_id ? (userMap[t.assignee_user_id] || 'Onbekend') : 'Niet toegewezen';
+
+      card.innerHTML = `
+        <div class="task-main">
+          <input type="checkbox" class="t-check" ${t.status === 'done' ? 'checked' : ''} style="width:20px;height:20px;margin-top:2px;">
+          <div style="flex:1;">
+            <div class="task-title" style="${t.status === 'done' ? 'text-decoration:line-through;color:var(--text-muted);' : ''}">${esc(t.title)}</div>
+            <div class="task-meta">
+              <span class="badge" style="background:${prioColor}15;color:${prioColor};">${t.priority}</span>
+              ${t.due_at ? `<span class="muted">📅 ${formatDate(t.due_at)}</span>` : ''}
+              <span class="muted">👤 ${esc(assigneeName)}</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <select class="t-status-sel" style="font-size:0.8rem;padding:4px;">
+              <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>Todo</option>
+              <option value="in_progress" ${t.status === 'in_progress' ? 'selected' : ''}>Bezig</option>
+              <option value="done" ${t.status === 'done' ? 'selected' : ''}>Klaar</option>
+            </select>
+            <button class="btn-ghost t-del-btn" style="color:var(--danger);">✕</button>
+          </div>
+        </div>
+        <div class="subtask-area">
+          <div class="subtask-list">
+            ${(t.subtasks || []).map(st => `
+              <div class="subtask-row">
+                <input type="checkbox" class="st-check" data-id="${st.id}" ${st.is_completed ? 'checked' : ''}>
+                <span style="${st.is_completed ? 'text-decoration:line-through;color:var(--text-muted);' : ''}">${esc(st.title)}</span>
+                <button class="btn-ghost st-del-btn" data-id="${st.id}" style="margin-left:auto;padding:2px;font-size:0.8rem;">×</button>
+              </div>`).join('')}
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <input class="st-input" placeholder="+ Subtaak..." style="font-size:0.85rem;padding:4px 8px;">
+            <button class="btn-ghost st-add-btn" style="font-size:0.85rem;">Toevoegen</button>
+          </div>
+        </div>`;
+
+      // Handlers for task
+      card.querySelector('.t-check').onchange = async (e) => {
+        await updateTask(t.id, { status: e.target.checked ? 'done' : 'todo' });
+        renderList();
+      };
+      card.querySelector('.t-status-sel').onchange = async (e) => {
+        await updateTask(t.id, { status: e.target.value });
+        renderList();
+      };
+      card.querySelector('.t-del-btn').onclick = async () => {
+        if (confirm('Taak verwijderen?')) { await deleteTask(t.id); renderList(); }
+      };
+
+      // Handlers for subtasks
+      card.querySelectorAll('.st-check').forEach(cb => cb.onchange = async (e) => {
+        await updateSubtask(cb.dataset.id, { is_completed: e.target.checked });
+        renderList();
+      });
+      card.querySelectorAll('.st-del-btn').forEach(btn => btn.onclick = async () => {
+        await deleteSubtask(btn.dataset.id);
+        renderList();
+      });
+      card.querySelector('.st-add-btn').onclick = async () => {
+        const val = card.querySelector('.st-input').value.trim();
+        if (!val) return;
+        await createSubtask({ task_id: t.id, title: val, is_completed: false });
+        renderList();
+      };
+
+      listArea.appendChild(card);
+    });
+  };
+
+  renderList();
+
+  container.querySelector('#tn-add').onclick = async () => {
+    const title = container.querySelector('#tn-title').value.trim();
+    if (!title) return;
+    await createTask({
+      event_id: eventId,
+      title,
+      due_at: container.querySelector('#tn-due').value || null,
+      priority: container.querySelector('#tn-prio').value,
+      assignee_user_id: container.querySelector('#tn-assign').value || null,
+      status: 'todo'
+    });
+    container.querySelector('#tn-title').value = '';
+    renderList();
+  };
+}
+
+// ─── ATTACHMENTS TAB ─────────────────────────────────────────
+async function renderAttachmentsTab(container, eventId) {
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const attachments = await listAttachments(eventId);
+
+  container.innerHTML = `
+    <div class="attachment-add-form">
+      <input id="an-title" placeholder="Titel (bijv. Briefing PDF)">
+      <input id="an-url" placeholder="URL (Google Drive / Teams / Dropbox link)">
+      <select id="an-type">
+        <option value="link">Link / Website</option>
+        <option value="pdf">PDF Document</option>
+        <option value="image">Afbeelding</option>
+        <option value="video">Video link</option>
+      </select>
+      <button id="an-add" class="btn-primary">Toevoegen</button>
+    </div>
+    <div id="attachments-list" style="margin-top:20px;">
+      ${attachments.length === 0 ? '<p class="muted" style="text-align:center;padding:20px;">Nog geen bijlagen toegevoegd.</p>' : attachments.map(a => `
+        <div class="attachment-row">
+          <span class="attachment-icon">${a.file_type === 'pdf' ? '📄' : a.file_type === 'image' ? '🖼' : a.file_type === 'video' ? '🎬' : '🔗'}</span>
+          <div style="flex:1;">
+            <div style="font-weight:600;">${esc(a.title || 'Bijlage')}</div>
+            <a href="${esc(a.url)}" target="_blank" class="muted" style="font-size:0.8rem;">Link openen ↗</a>
+          </div>
+          <button class="btn-ghost a-del-btn" data-id="${a.id}" style="color:var(--danger);">✕</button>
+        </div>`).join('')}
+    </div>`;
+
+  container.querySelectorAll('.a-del-btn').forEach(btn => btn.onclick = async () => {
+    if (confirm('Bijlage verwijderen?')) {
+      await deleteAttachment(btn.dataset.id);
+      renderAttachmentsTab(container, eventId);
+    }
+  });
+
+  container.querySelector('#an-add').onclick = async () => {
+    const url = container.querySelector('#an-url').value.trim();
+    const title = container.querySelector('#an-title').value.trim();
+    if (!url) return alert('URL is verplicht');
+
+    const { data: { user } } = await supabase.auth.getUser();
+    await addAttachment({
+      event_id: eventId,
+      user_id: user?.id,
+      title: title || 'Naamloos',
+      url,
+      file_type: container.querySelector('#an-type').value
+    });
+    renderAttachmentsTab(container, eventId);
+  };
+}
