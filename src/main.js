@@ -54,7 +54,7 @@ function renderLogin(container) {
           flex-direction:column;
           align-items:center;
           text-align:center;
-          gap:28px;
+          gap:26px;
         ">
           <img
             id="login-logo"
@@ -70,15 +70,14 @@ function renderLogin(container) {
             "
           />
 
-          <p style="
+          <!-- Dit blok wordt na submit vervangen door 'Check je mailbox.' -->
+          <p id="login-headline" style="
             margin:0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
             font-size:1.1rem;
             line-height:1.55;
             color:#2d3036;
-          ">
-            Vul je e-mailadres in om toegang te krijgen.
-          </p>
+          ">Vul je e-mailadres in om toegang te krijgen.</p>
 
           <form id="login-form" style="
             width:100%;
@@ -126,16 +125,6 @@ function renderLogin(container) {
             </button>
           </form>
 
-          <p id="login-success" style="
-            display:none;
-            margin:0;
-            font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:1.1rem;
-            color:#2d3036;
-          ">
-            Check je mailbox.
-          </p>
-
           <p style="
             margin:6px 0 0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
@@ -152,10 +141,10 @@ function renderLogin(container) {
   const logoEl = container.querySelector('#login-logo');
   logoEl.onerror = () => { logoEl.style.display = 'none'; };
 
+  const headlineEl = container.querySelector('#login-headline');
   const form = container.querySelector('#login-form');
   const btn = container.querySelector('#login-btn');
   const emailInput = container.querySelector('#login-email');
-  const successEl = container.querySelector('#login-success');
 
   emailInput.focus();
 
@@ -181,7 +170,8 @@ function renderLogin(container) {
       return;
     }
 
+    // Na succesvolle submit: alleen "Check je mailbox." onder het logo.
+    headlineEl.textContent = 'Check je mailbox.';
     form.style.display = 'none';
-    successEl.style.display = 'block';
   });
 }
