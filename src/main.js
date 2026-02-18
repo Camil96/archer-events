@@ -36,101 +36,109 @@ function renderLogin(container) {
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:18px;
+      padding:24px;
       background:#f4f4f4;
     ">
       <div class="card login-card" style="
         width:100%;
-        max-width:440px;
-        text-align:center;
-        padding:34px 28px 22px;
-        border-radius:18px;
+        max-width:480px;
+        padding:44px 34px 26px;
+        border-radius:22px;
         background:#ffffff;
         color:#000000;
         border:1px solid rgba(45,48,54,0.10);
-        box-shadow:0 18px 45px rgba(0,0,0,0.12);
+        box-shadow:0 22px 60px rgba(0,0,0,0.12);
       ">
-        <img
-          id="login-logo"
-          src="${logoUrl}"
-          alt="Archer"
-          style="
-            height:64px;
-            max-width:85%;
-            object-fit:contain;
-            margin:0 auto 18px;
-            display:block;
-          "
-        />
-
-        <p style="
-          margin:0 0 22px;
-          font-family:Inter,system-ui,-apple-system,sans-serif;
-          font-size:1rem;
-          color:#2d3036;
+        <div style="
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          text-align:center;
+          gap:18px;
         ">
-          Vul je e-mailadres in om toegang te krijgen.
-        </p>
-
-        <form id="login-form" style="margin:0;">
-          <input
-            id="login-email"
-            type="email"
-            autocomplete="email"
-            placeholder="jij@bedrijf.be"
-            required
+          <img
+            id="login-logo"
+            src="${logoUrl}"
+            alt="Archer"
             style="
-              width:100%;
-              margin-bottom:12px;
-              padding:12px 12px;
-              border-radius:10px;
-              border:1px solid rgba(45,48,54,0.18);
-              background:#ffffff;
-              color:#000000;
-              font-family:Inter,system-ui,-apple-system,sans-serif;
-              font-size:1rem;
-              outline:none;
+              height:104px;
+              width:auto;
+              max-width:92%;
+              object-fit:contain;
+              display:block;
+              margin:0 auto;
             "
           />
 
-          <button
-            id="login-btn"
-            type="submit"
-            style="
-              width:100%;
-              padding:12px 12px;
-              border-radius:999px;
-              border:none;
-              background:#4d73ff;
-              color:#ffffff;
-              font-family:Inter,system-ui,-apple-system,sans-serif;
-              font-size:1rem;
-              font-weight:500;
-              cursor:pointer;
-            "
-          >
-            Inloggen
-          </button>
-        </form>
+          <p style="
+            margin:0;
+            font-family:Inter,system-ui,-apple-system,sans-serif;
+            font-size:1.05rem;
+            line-height:1.45;
+            color:#2d3036;
+          ">
+            Vul je e-mailadres in om toegang te krijgen.
+          </p>
 
-        <p id="login-success" style="
-          display:none;
-          margin-top:16px;
-          font-family:Inter,system-ui,-apple-system,sans-serif;
-          font-size:1rem;
-          color:#2d3036;
-        ">
-          Check je mailbox.
-        </p>
+          <form id="login-form" style="width:100%; margin:0; display:flex; flex-direction:column; gap:14px;">
+            <input
+              id="login-email"
+              type="email"
+              autocomplete="email"
+              placeholder="jij@bedrijf.be"
+              required
+              style="
+                width:100%;
+                padding:14px 14px;
+                border-radius:12px;
+                border:1px solid rgba(45,48,54,0.18);
+                background:#ffffff;
+                color:#000000;
+                font-family:Inter,system-ui,-apple-system,sans-serif;
+                font-size:1rem;
+                outline:none;
+              "
+            />
 
-        <p style="
-          margin-top:18px;
-          font-family:Inter,system-ui,-apple-system,sans-serif;
-          font-size:0.85rem;
-          color:rgba(45,48,54,0.75);
-        ">
-          Vragen? Mail <a href="mailto:camilsahnoune@gmail.com" style="color:#4d73ff;text-decoration:none;">camilsahnoune@gmail.com</a>
-        </p>
+            <button
+              id="login-btn"
+              type="submit"
+              style="
+                width:100%;
+                padding:14px 14px;
+                border-radius:999px;
+                border:none;
+                background:#4d73ff;
+                color:#ffffff;
+                font-family:Inter,system-ui,-apple-system,sans-serif;
+                font-size:1rem;
+                font-weight:500;
+                cursor:pointer;
+              "
+            >
+              Inloggen
+            </button>
+          </form>
+
+          <p id="login-success" style="
+            display:none;
+            margin:0;
+            font-family:Inter,system-ui,-apple-system,sans-serif;
+            font-size:1.05rem;
+            color:#2d3036;
+          ">
+            Check je mailbox.
+          </p>
+
+          <p style="
+            margin:10px 0 0;
+            font-family:Inter,system-ui,-apple-system,sans-serif;
+            font-size:0.9rem;
+            color:rgba(45,48,54,0.75);
+          ">
+            Vragen? Mail <a href="mailto:camilsahnoune@gmail.com" style="color:#4d73ff;text-decoration:none;">camilsahnoune@gmail.com</a>
+          </p>
+        </div>
       </div>
     </div>
   `;
@@ -145,7 +153,7 @@ function renderLogin(container) {
   const successEl = container.querySelector('#login-success');
 
   form.addEventListener('submit', async (e) => {
-    e.preventDefault(); // Enter werkt nu automatisch.
+    e.preventDefault(); // Enter werkt nu.
 
     const email = emailInput.value.trim();
     if (!email) return;
@@ -170,8 +178,3 @@ function renderLogin(container) {
     successEl.style.display = 'block';
   });
 }
-
-
-
-
-
