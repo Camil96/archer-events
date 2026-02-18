@@ -36,26 +36,39 @@ function renderLogin(container) {
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:16px;
+      padding:18px;
       background:#f4f4f4;
     ">
       <div class="card login-card" style="
         width:100%;
-        max-width:420px;
+        max-width:440px;
         text-align:center;
-        padding:32px 28px 20px;
-        border-radius:16px;
-        background:#2d3036;
-        color:#ffffff;
-        box-shadow:0 18px 45px rgba(0,0,0,0.35);
+        padding:34px 28px 22px;
+        border-radius:18px;
+        background:#ffffff;
+        color:#000000;
+        border:1px solid rgba(45,48,54,0.10);
+        box-shadow:0 18px 45px rgba(0,0,0,0.12);
       ">
-        <img id="login-logo" src="${logoUrl}" alt="Archer" style="height:40px;margin-bottom:20px;" />
+        <img
+          id="login-logo"
+          src="${logoUrl}"
+          alt="Archer"
+          style="
+            height:64px;
+            max-width:85%;
+            object-fit:contain;
+            margin:0 auto 18px;
+            display:block;
+          "
+        />
 
-        <h2 style="margin:0 0 8px;font-family:Inter,system-ui,-apple-system,sans-serif;font-weight:500;font-size:1.3rem;">
-          Archer Events
-        </h2>
-
-        <p style="margin:0 0 24px;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:0.95rem;color:#a6b3c0;">
+        <p style="
+          margin:0 0 22px;
+          font-family:Inter,system-ui,-apple-system,sans-serif;
+          font-size:1rem;
+          color:#2d3036;
+        ">
           Vul je e-mailadres in om toegang te krijgen.
         </p>
 
@@ -69,13 +82,13 @@ function renderLogin(container) {
             style="
               width:100%;
               margin-bottom:12px;
-              padding:10px 12px;
-              border-radius:8px;
-              border:1px solid #444a55;
-              background:#1b1d22;
-              color:#ffffff;
+              padding:12px 12px;
+              border-radius:10px;
+              border:1px solid rgba(45,48,54,0.18);
+              background:#ffffff;
+              color:#000000;
               font-family:Inter,system-ui,-apple-system,sans-serif;
-              font-size:0.95rem;
+              font-size:1rem;
               outline:none;
             "
           />
@@ -85,14 +98,13 @@ function renderLogin(container) {
             type="submit"
             style="
               width:100%;
-              margin-top:4px;
-              padding:10px 12px;
+              padding:12px 12px;
               border-radius:999px;
               border:none;
               background:#4d73ff;
               color:#ffffff;
               font-family:Inter,system-ui,-apple-system,sans-serif;
-              font-size:0.95rem;
+              font-size:1rem;
               font-weight:500;
               cursor:pointer;
             "
@@ -105,25 +117,25 @@ function renderLogin(container) {
           display:none;
           margin-top:16px;
           font-family:Inter,system-ui,-apple-system,sans-serif;
-          font-size:0.95rem;
-          color:#a6b3c0;
+          font-size:1rem;
+          color:#2d3036;
         ">
           Check je mailbox.
         </p>
 
         <p style="
-          margin-top:20px;
+          margin-top:18px;
           font-family:Inter,system-ui,-apple-system,sans-serif;
-          font-size:0.8rem;
-          color:#a6b3c0;
+          font-size:0.85rem;
+          color:rgba(45,48,54,0.75);
         ">
-          Vragen? Mail <a href="mailto:camilsahnoune@gmail.com" style="color:#85aeff;text-decoration:none;">camilsahnoune@gmail.com</a>
+          Vragen? Mail <a href="mailto:camilsahnoune@gmail.com" style="color:#4d73ff;text-decoration:none;">camilsahnoune@gmail.com</a>
         </p>
       </div>
     </div>
   `;
 
-  // Als logo-pad fout is, verberg hem i.p.v. een broken image.
+  // Als het logo-pad fout is, verberg broken image.
   const logoEl = container.querySelector('#login-logo');
   logoEl.onerror = () => { logoEl.style.display = 'none'; };
 
@@ -133,7 +145,7 @@ function renderLogin(container) {
   const successEl = container.querySelector('#login-success');
 
   form.addEventListener('submit', async (e) => {
-    e.preventDefault(); // Enter = submit, maar we houden controle in JS.
+    e.preventDefault(); // Enter werkt nu automatisch.
 
     const email = emailInput.value.trim();
     if (!email) return;
@@ -144,7 +156,6 @@ function renderLogin(container) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        // Werkt op localhost én op Vercel, zolang die origin in Supabase Redirect URLs staat.
         emailRedirectTo: window.location.origin,
       },
     });
@@ -155,11 +166,11 @@ function renderLogin(container) {
       return;
     }
 
-    // Succes: verberg form, toon boodschap.
     form.style.display = 'none';
     successEl.style.display = 'block';
   });
 }
+
 
 
 
