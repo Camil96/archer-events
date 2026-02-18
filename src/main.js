@@ -28,21 +28,47 @@ init();
 
 function renderLogin(container) {
   container.innerHTML = `
-    <div style="display:flex;justify-content:center;align-items:center;height:100vh;background:var(--bg-muted);">
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
       <div class="card login-card" style="width:100%;max-width:400px;text-align:center;">
-        <div style="margin-bottom:24px;">
-           <img src="/logo-archer.png" alt="Archer Events" style="height:40px;">
-        </div>
-        <h2>Inloggen</h2>
-        <p class="muted" style="margin-bottom:24px;">Log in om toegang te krijgen tot het operations dashboard.</p>
-        <button id="login-btn" class="btn-primary" style="width:100%;justify-content:center;">Inloggen met Microsoft</button>
+        <img src="/archer-logo.png" alt="Archer" style="height:48px;margin-bottom:24px;" />
+        <h2 style="margin-bottom:24px;">Inloggen</h2>
+        <input id="login-email" type="email" placeholder="jouw@email.be"
+          style="width:100%;margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:1rem;" />
+        <p id="login-error" style="color:var(--danger);font-size:.875rem;min-height:20px;margin-bottom:8px;"></p>
+        <button id="login-btn" class="btn-primary" style="width:100%;justify-content:center;">Inloggen</button>
+        <p id="login-success" style="display:none;margin-top:16px;color:var(--success,green);">
+          ✉️ Controleer je inbox en klik op de link om in te loggen.
+        </p>
       </div>
-    </div>
-  `;
-  container.querySelector("#login-btn").onclick = () => {
-    supabase.auth.signInWithOAuth({
-      provider: "azure",
-      options: { redirectTo: window.location.origin }
+    </div>`;
+
+  const btn = container.querySelector('#login-btn');
+  const emailInput = container.querySelector('#login-email');
+  const errorEl = container.querySelector('#login-error');
+  const successEl = container.querySelector('#login-success');
+
+  btn.onclick = async () => {
+    const email = emailInput.value.trim();
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Versturen...';
+    errorEl.textContent = '';
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: 'https://archer-events.vercel.app' },
     });
+
+    if (error) {
+      errorEl.textContent = error.message;
+      btn.disabled = false;
+      btn.textContent = 'Inloggen';
+    } else {
+      btn.style.display = 'none';
+      emailInput.style.display = 'none';
+      successEl.style.display = 'block';
+    }
   };
 }
+
