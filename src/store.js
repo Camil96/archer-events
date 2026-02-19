@@ -52,8 +52,8 @@ function getBrandFilterValues(rawBrand) {
   return [...new Set(aliases.map((alias) => String(alias || "").trim()).filter(Boolean))];
 }
 
-function toMinuteStamp(startAt) {
-  const stamp = new Date(startAt || "").getTime();
+function toMinuteStamp(dateValue) {
+  const stamp = new Date(dateValue || "").getTime();
   return Number.isFinite(stamp) ? Math.floor(stamp / 60000) : NaN;
 }
 
@@ -85,7 +85,7 @@ async function applyCatalogCorrections(existingRows) {
   let corrected = 0;
 
   for (const row of existingRows || []) {
-    const stamp = toMinuteStamp(row.start_at);
+    const stamp = toMinuteStamp(row.start_at || row.event_date);
     if (!Number.isFinite(stamp)) continue;
 
     const title = String(row.title || "").trim().toLowerCase();
@@ -145,6 +145,7 @@ export async function importEventCatalog2026() {
     title: event.title,
     brand: normalizeBrandLabel(event.brand),
     start_at: event.start_at,
+    event_date: event.start_at,
     end_at: event.end_at || null,
     location: event.location || null,
     timezone: "Europe/Brussels",
@@ -154,9 +155,7 @@ export async function importEventCatalog2026() {
 
   const { data: existing, error: fetchError } = await supabase
     .from("events")
-    .select("id,title,start_at,brand")
-    .gte("start_at", "2026-01-01T00:00:00Z")
-    .lte("start_at", "2026-12-31T23:59:59Z");
+    .select("id,title,start_at,event_date,brand");
 
   if (fetchError) throw fetchError;
 
@@ -164,13 +163,13 @@ export async function importEventCatalog2026() {
 
   const { data: refreshed, error: refreshError } = await supabase
     .from("events")
-    .select("title,start_at,brand")
-    .gte("start_at", "2026-01-01T00:00:00Z")
-    .lte("start_at", "2026-12-31T23:59:59Z");
+    .select("title,start_at,event_date,brand");
 
   if (refreshError) throw refreshError;
 
-  const existingKeys = new Set((refreshed || []).map((row) => toCatalogKey(row.brand, row.title, row.start_at)));
+  const existingKeys = new Set(
+    (refreshed || []).map((row) => toCatalogKey(row.brand, row.title, row.start_at || row.event_date))
+  );
   const missingRows = rows.filter((row) => !existingKeys.has(toCatalogKey(row.brand, row.title, row.start_at)));
 
   if (!missingRows.length) return { inserted: 0, skipped: rows.length, corrected };
