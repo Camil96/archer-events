@@ -1,950 +1,1934 @@
 import { supabase } from "../supabaseClient.js";
+import { SUPABASE_URL } from "../config.js";
 import { store } from "../store.js";
-import { showToast } from "../utils.js";
+import { esc, showToast } from "../utils.js";
 
-// ─── SECTIE DEFINITIES ────────────────────────────────────────────────────────
-const SECTIONS = [
-    { id: "organisatie", icon: "◈", label: "Organisatie" },
-    { id: "locaties", icon: "▣", label: "Locaties" },
-    { id: "programmas", icon: "◉", label: "Programma's" },
-    { id: "event-types", icon: "◎", label: "Event types" },
-    { id: "sessies", icon: "◷", label: "Sessies & slots" },
-    { id: "gebruikers", icon: "◯", label: "Gebruikers" },
-    { id: "notificaties", icon: "◬", label: "Notificaties" },
-    { id: "catering", icon: "◫", label: "Catering" },
-    { id: "export", icon: "◳", label: "Export & integraties" },
-    { id: "auditlog", icon: "◱", label: "Audit log" },
+const BRANDS = [
+  { id: "academy", label: "Archer Academy", fallbackColor: "#4d73ff", fallbackEmail: "events@archer.finance" },
+  { id: "invest", label: "Archer Invest", fallbackColor: "#4d73ff", fallbackEmail: "events@archer.finance" },
+  { id: "fund", label: "Archer Fund", fallbackColor: "#4d73ff", fallbackEmail: "events@archer.finance" },
 ];
 
-const FACILITIES = ["WiFi", "Catering", "Parking", "AV-installatie", "Livestream", "Kleedkamers"];
+const SECTION_DEFS = [
+  { id: "organisatie", icon: "◈", label: "Organisatie", description: "Merken, branding en basisinstellingen." },
+  { id: "locaties", icon: "▣", label: "Locaties", description: "Venue setup, capaciteit en faciliteiten." },
+  { id: "programmas", icon: "◉", label: "Programma's", description: "Programma-categorieen en status per merk." },
+  { id: "event-types", icon: "◎", label: "Event types", description: "Type templates met defaults voor operations." },
+  { id: "sessies", icon: "◷", label: "Sessies & slots", description: "Standaard timeslots voor planning." },
+  { id: "gebruikers", icon: "◯", label: "Gebruikers", description: "Rollen, merktoewijzing en toegang." },
+  { id: "notificaties", icon: "◬", label: "Notificaties", description: "E-mailtriggers en templatebeheer." },
+  { id: "catering", icon: "◫", label: "Catering", description: "Catering catalogus voor event teams." },
+  { id: "export", icon: "◳", label: "Export & integraties", description: "CSV defaults, webhooks en API keys." },
+  { id: "auditlog", icon: "◱", label: "Audit log", description: "Traceer kritieke wijzigingen." },
+];
+
+const FACILITY_OPTIONS = ["WiFi", "Catering", "Parking", "AV-installatie", "Livestream", "Kleedkamers"];
+
 const NOTIFICATION_TRIGGERS = [
-    { key: "invite", label: "Uitnodiging deelnemer" },
-    { key: "rsvp", label: "Bevestiging na RSVP" },
-    { key: "reminder", label: "Herinnering (X dagen voor event)" },
-    { key: "checkin", label: "Check-in bevestiging" },
-    { key: "followup", label: "Follow-up na event" },
+  { key: "invite", label: "Uitnodiging deelnemer" },
+  { key: "rsvp", label: "Bevestiging na RSVP" },
+  { key: "reminder", label: "Herinnering (X dagen voor event)" },
+  { key: "checkin", label: "Check-in bevestiging" },
+  { key: "followup", label: "Follow-up na event" },
 ];
 
-let activeSection = "organisatie";
+const EXPORT_FIELDS = [
+  "title",
+  "location",
+  "event_date",
+  "start_at",
+  "end_at",
+  "capacity",
+  "program",
+  "participant_group",
+  "catering",
+  "status",
+];
 
-// ─── ENTRY POINT ─────────────────────────────────────────────────────────────
+const BRAND_IDS = BRANDS.map((b) => b.id);
+
+const state = {
+  root: null,
+  contentEl: null,
+  activeSection: "organisatie",
+  currentBrand: store.brandId || "academy",
+  loadToken: 0,
+};
+
+const SECTION_RENDERERS = {
+  organisatie: renderOrganisatieSection,
+  locaties: renderLocatiesSection,
+  programmas: renderProgrammasSection,
+  "event-types": renderEventTypesSection,
+  sessies: renderSessiesSection,
+  gebruikers: renderGebruikersSection,
+  notificaties: renderNotificatiesSection,
+  catering: renderCateringSection,
+  export: renderExportSection,
+  auditlog: renderAuditLogSection,
+};
+
 export async function renderSettings(container) {
-    const body = container || document.getElementById("page-body");
-    const actions = document.getElementById("page-actions");
-    if (actions) actions.innerHTML = "";
-    if (!body) throw new Error("Settings container niet gevonden.");
+  const root = container || document.getElementById("page-body");
+  if (!root) throw new Error("Settings container niet gevonden.");
 
-    body.innerHTML = `
-    <div class="settings-wrap">
-      <nav class="settings-nav">
-        ${SECTIONS.map(s => `
-          <div class="settings-nav-item ${s.id === activeSection ? "active" : ""}"
-               data-section="${s.id}">
-            <span class="sn-icon">${s.icon}</span>
-            <span>${s.label}</span>
-          </div>`).join("")}
-      </nav>
-      <div class="settings-content" id="settings-content">
-        <div class="s-loading">Laden...</div>
-      </div>
-    </div>`;
+  state.root = root;
+  state.currentBrand = store.brandId || state.currentBrand || BRANDS[0].id;
 
-    document.querySelectorAll(".settings-nav-item").forEach(el => {
-        el.onclick = () => {
-            activeSection = el.dataset.section;
-            document.querySelectorAll(".settings-nav-item")
-                .forEach(n => n.classList.toggle("active", n.dataset.section === activeSection));
-            loadSection(activeSection);
-        };
-    });
-
-    loadSection(activeSection);
+  renderShell();
+  bindShellEvents();
+  await loadSection(state.activeSection);
 }
 
-async function loadSection(id) {
-    const content = document.getElementById("settings-content");
-    content.innerHTML = `<div class="s-loading">Laden...</div>`;
-    try {
-        switch (id) {
-            case "organisatie": await sectionOrganisatie(content); break;
-            case "locaties": await sectionLocaties(content); break;
-            case "programmas": await sectionProgrammas(content); break;
-            case "event-types": await sectionEventTypes(content); break;
-            case "sessies": await sectionSessies(content); break;
-            case "gebruikers": await sectionGebruikers(content); break;
-            case "notificaties": await sectionNotificaties(content); break;
-            case "catering": await sectionCatering(content); break;
-            case "export": await sectionExport(content); break;
-            case "auditlog": await sectionAuditLog(content); break;
-        }
-    } catch (e) {
-        content.innerHTML = `<div class="s-error">Fout bij laden: ${e.message}</div>`;
-    }
-}
-
-// ─── 1. ORGANISATIE ──────────────────────────────────────────────────────────
-async function sectionOrganisatie(el) {
-    const brands = [
-        { id: "academy", label: "Archer Academy", color: "#0000FF", email: "events@archer.finance" },
-        { id: "invest", label: "Archer Invest", color: "#0000FF", email: "events@archer.finance" },
-        { id: "fund", label: "Archer Investment Fund", color: "#0000FF", email: "events@archer.finance" },
-    ];
-
-    const { data: settings } = await supabase
-        .from("app_settings").select("*").in("brand", ["academy", "invest", "fund"]);
-
-    const getSetting = (brand, key) =>
-        settings?.find(s => s.brand === brand && s.key === key)?.value || "";
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Organisatie</h2>
-      <p>Beheer de merken en basisinformatie van Archer.</p>
-    </div>
-    ${brands.map(b => `
-      <div class="s-card" id="org-${b.id}">
-        <div class="s-card-title">
-          <span class="brand-dot" style="background:${b.color}"></span>
-          ${b.label}
+function renderShell() {
+  state.root.innerHTML = `
+    <section class="cp-shell">
+      <aside class="cp-nav" aria-label="Instellingen secties">
+        <div class="cp-nav-head">
+          <p class="cp-eyebrow">Archer Events</p>
+          <h2>Control Panel</h2>
+          <p>Hospitality operations setup voor teams, locaties en workflows.</p>
         </div>
-        <div class="s-grid-2">
-          <div class="s-field">
-            <label>Naam</label>
-            <input type="text" id="org-name-${b.id}" value="${b.label}" />
+        <nav class="cp-nav-list">
+          ${SECTION_DEFS.map(
+            (section) => `
+            <button class="cp-nav-item ${section.id === state.activeSection ? "active" : ""}" data-section="${section.id}">
+              <span class="cp-nav-icon">${section.icon}</span>
+              <span>
+                <strong>${section.label}</strong>
+                <small>${section.description}</small>
+              </span>
+            </button>
+          `
+          ).join("")}
+        </nav>
+      </aside>
+
+      <div class="cp-main">
+        <header class="cp-main-head">
+          <div>
+            <p class="cp-eyebrow">Instellingen</p>
+            <h1>Archer Hospitality Control Panel</h1>
+            <p>Centraal beheer voor event planning, deelnemerservaring en operationele standaarden.</p>
           </div>
-          <div class="s-field">
-            <label>Contact e-mail</label>
-            <input type="email" id="org-email-${b.id}" value="${getSetting(b.id, "contact_email") || b.email}" />
-          </div>
-          <div class="s-field">
-            <label>Accent kleur</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="color" id="org-color-${b.id}" value="${getSetting(b.id, "accent_color") || b.color}" style="width:40px;height:36px;border:none;padding:0;cursor:pointer;border-radius:4px" />
-              <input type="text" id="org-color-txt-${b.id}" value="${getSetting(b.id, "accent_color") || b.color}" style="flex:1" />
-            </div>
-          </div>
-          <div class="s-field">
-            <label>Logo URL</label>
-            <input type="url" id="org-logo-${b.id}" value="${getSetting(b.id, "logo_url") || ""}" placeholder="https://..." />
-          </div>
-        </div>
-        <div class="s-actions">
-          <button class="s-btn s-btn-primary" onclick="window.__saveOrg('${b.id}')">Opslaan</button>
-        </div>
-      </div>`).join("")}`;
-
-    // sync color picker ↔ text
-    brands.forEach(b => {
-        const picker = document.getElementById(`org-color-${b.id}`);
-        const txt = document.getElementById(`org-color-txt-${b.id}`);
-        picker.oninput = () => txt.value = picker.value;
-        txt.oninput = () => { if (/^#[0-9a-fA-F]{6}$/.test(txt.value)) picker.value = txt.value; };
-    });
-
-    window.__saveOrg = async (brandId) => {
-        const pairs = [
-            ["contact_email", document.getElementById(`org-email-${brandId}`).value],
-            ["accent_color", document.getElementById(`org-color-txt-${brandId}`).value],
-            ["logo_url", document.getElementById(`org-logo-${brandId}`).value],
-        ];
-        for (const [key, value] of pairs) {
-            await supabase.from("app_settings").upsert({ brand: brandId, key, value }, { onConflict: "brand,key" });
-        }
-        showToast("Instellingen opgeslagen.", "success");
-    };
-}
-
-// ─── 2. LOCATIES ─────────────────────────────────────────────────────────────
-async function sectionLocaties(el) {
-    const { data: locs } = await supabase.from("locations").select("*").order("name");
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Locaties</h2>
-      <p>Beheer alle fysieke locaties voor events.</p>
-      <button class="s-btn s-btn-primary" id="add-loc-btn">+ Locatie toevoegen</button>
-    </div>
-    <div id="locs-list">
-      ${renderLocsList(locs || [])}
-    </div>`;
-
-    document.getElementById("add-loc-btn").onclick = () => openLocModal(null, () => loadSection("locaties"));
-    bindLocActions(locs || [], () => loadSection("locaties"));
-}
-
-function renderLocsList(locs) {
-    if (!locs.length) return `<div class="s-empty">Geen locaties gevonden.</div>`;
-    return `
-    <div class="s-table-wrap">
-      <table>
-        <thead><tr><th>Naam</th><th>Stad</th><th>Capaciteit</th><th>Faciliteiten</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          ${locs.map(l => `
-            <tr>
-              <td><strong>${l.name}</strong><br><small style="color:#999">${l.address || ""}</small></td>
-              <td>${l.city || ""}</td>
-              <td>${l.capacity || "."}</td>
-              <td>${(l.facilities || []).slice(0, 3).join(", ")}${(l.facilities || []).length > 3 ? "..." : ""}</td>
-              <td><span class="s-badge ${l.is_active ? "s-badge-active" : "s-badge-off"}">${l.is_active ? "Actief" : "Inactief"}</span></td>
-              <td class="s-row-actions">
-                <button class="s-btn-link edit-loc" data-id="${l.id}">Bewerken</button>
-                <button class="s-btn-link toggle-loc" data-id="${l.id}" data-active="${l.is_active}">${l.is_active ? "Deactiveren" : "Activeren"}</button>
-              </td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function bindLocActions(locs, refresh) {
-    document.querySelectorAll(".edit-loc").forEach(btn => {
-        btn.onclick = () => {
-            const loc = locs.find(l => l.id === btn.dataset.id);
-            if (loc) openLocModal(loc, refresh);
-        };
-    });
-    document.querySelectorAll(".toggle-loc").forEach(btn => {
-        btn.onclick = async () => {
-            await supabase.from("locations").update({ is_active: btn.dataset.active === "true" ? false : true }).eq("id", btn.dataset.id);
-            showToast("Status bijgewerkt.", "success");
-            refresh();
-        };
-    });
-}
-
-function openLocModal(loc, refresh) {
-    const isEdit = !!loc;
-    const fac = loc?.facilities || [];
-    const overlay = document.createElement("div");
-    overlay.className = "s-modal-overlay";
-    overlay.innerHTML = `
-    <div class="s-modal">
-      <div class="s-modal-header">
-        <h3>${isEdit ? "Locatie bewerken" : "Nieuwe locatie"}</h3>
-        <button class="s-modal-close" id="loc-close">✕</button>
-      </div>
-      <div class="s-grid-2">
-        <div class="s-field" style="grid-column:1/-1">
-          <label>Naam</label>
-          <input id="lf-name" value="${loc?.name || ""}" placeholder="bv. Archer HQ" />
-        </div>
-        <div class="s-field">
-          <label>Adres</label>
-          <input id="lf-address" value="${loc?.address || ""}" />
-        </div>
-        <div class="s-field">
-          <label>Stad</label>
-          <input id="lf-city" value="${loc?.city || ""}" />
-        </div>
-        <div class="s-field">
-          <label>Postcode</label>
-          <input id="lf-postal" value="${loc?.postal_code || ""}" />
-        </div>
-        <div class="s-field">
-          <label>Capaciteit</label>
-          <input id="lf-cap" type="number" value="${loc?.capacity || ""}" />
-        </div>
-        <div class="s-field" style="grid-column:1/-1">
-          <label>Notities</label>
-          <textarea id="lf-notes" rows="2">${loc?.notes || ""}</textarea>
-        </div>
-        <div class="s-field" style="grid-column:1/-1">
-          <label>Faciliteiten</label>
-          <div class="s-checkboxes">
-            ${FACILITIES.map(f => `
-              <label class="s-checkbox">
-                <input type="checkbox" value="${f}" ${fac.includes(f) ? "checked" : ""} />
-                ${f}
-              </label>`).join("")}
-          </div>
-        </div>
-      </div>
-      <div class="s-modal-actions">
-        <button class="s-btn s-btn-ghost" id="loc-cancel">Annuleren</button>
-        <button class="s-btn s-btn-primary" id="loc-save">${isEdit ? "Opslaan" : "Aanmaken"}</button>
-      </div>
-    </div>`;
-
-    document.body.appendChild(overlay);
-    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-    document.getElementById("loc-close").onclick = () => overlay.remove();
-    document.getElementById("loc-cancel").onclick = () => overlay.remove();
-    document.getElementById("loc-save").onclick = async () => {
-        const facilities = [...overlay.querySelectorAll(".s-checkboxes input:checked")].map(c => c.value);
-        const payload = {
-            brand: store.brandId || "academy",
-            name: document.getElementById("lf-name").value.trim(),
-            address: document.getElementById("lf-address").value.trim(),
-            city: document.getElementById("lf-city").value.trim(),
-            postal_code: document.getElementById("lf-postal").value.trim(),
-            capacity: parseInt(document.getElementById("lf-cap").value) || null,
-            notes: document.getElementById("lf-notes").value.trim(),
-            facilities,
-        };
-        if (!payload.name) { showToast("Naam is verplicht.", "error"); return; }
-        const { error } = isEdit
-            ? await supabase.from("locations").update(payload).eq("id", loc.id)
-            : await supabase.from("locations").insert([payload]);
-        if (error) { showToast("Fout: " + error.message, "error"); return; }
-        showToast(isEdit ? "Locatie opgeslagen." : "Locatie aangemaakt.", "success");
-        overlay.remove();
-        refresh();
-    };
-}
-
-// ─── 3. PROGRAMMA'S ───────────────────────────────────────────────────────────
-async function sectionProgrammas(el) {
-    const { data: progs } = await supabase.from("programs").select("*").order("name");
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Programma's</h2>
-      <p>Configureer de programma-categorieën per merk.</p>
-      <button class="s-btn s-btn-primary" id="add-prog-btn">+ Programma toevoegen</button>
-    </div>
-    <div id="progs-list">
-      ${renderSimpleList(progs || [], ["name", "brand", "description"], ["Naam", "Merk", "Beschrijving"], "prog")}
-    </div>`;
-
-    document.getElementById("add-prog-btn").onclick = () => openSimpleModal("programs", null, ["name", "brand", "description"], ["Naam", "Merk", "Omschrijving"], () => loadSection("programmas"));
-    bindSimpleActions("prog", progs || [], "programs", ["name", "brand", "description"], ["Naam", "Merk", "Omschrijving"], () => loadSection("programmas"));
-}
-
-// ─── 4. EVENT TYPES ───────────────────────────────────────────────────────────
-async function sectionEventTypes(el) {
-    const { data: types } = await supabase.from("event_types").select("*").order("name");
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Event types</h2>
-      <p>Definieer typen events met standaard capaciteit en catering.</p>
-      <button class="s-btn s-btn-primary" id="add-et-btn">+ Event type toevoegen</button>
-    </div>
-    <div id="et-list">
-      ${renderEventTypesList(types || [])}
-    </div>`;
-
-    document.getElementById("add-et-btn").onclick = () => openEventTypeModal(null, () => loadSection("event-types"));
-    bindEventTypeActions(types || [], () => loadSection("event-types"));
-}
-
-function renderEventTypesList(types) {
-    if (!types.length) return `<div class="s-empty">Geen event types gevonden.</div>`;
-    return `
-    <div class="s-table-wrap">
-      <table>
-        <thead><tr><th>Naam</th><th>Kleur</th><th>Std. capaciteit</th><th>Std. catering</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          ${types.map(t => `
-            <tr>
-              <td><strong>${t.name}</strong></td>
-              <td><span class="s-color-dot" style="background:${t.color}"></span> ${t.color}</td>
-              <td>${t.default_capacity || "."}</td>
-              <td>${t.default_catering || "."}</td>
-              <td><span class="s-badge ${t.is_active ? "s-badge-active" : "s-badge-off"}">${t.is_active ? "Actief" : "Inactief"}</span></td>
-              <td class="s-row-actions">
-                <button class="s-btn-link edit-et" data-id="${t.id}">Bewerken</button>
-                <button class="s-btn-link toggle-et" data-id="${t.id}" data-active="${t.is_active}">${t.is_active ? "Deactiveren" : "Activeren"}</button>
-              </td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function bindEventTypeActions(types, refresh) {
-    document.querySelectorAll(".edit-et").forEach(btn => {
-        btn.onclick = () => openEventTypeModal(types.find(t => t.id === btn.dataset.id), refresh);
-    });
-    document.querySelectorAll(".toggle-et").forEach(btn => {
-        btn.onclick = async () => {
-            await supabase.from("event_types").update({ is_active: btn.dataset.active === "true" ? false : true }).eq("id", btn.dataset.id);
-            showToast("Status bijgewerkt.", "success");
-            refresh();
-        };
-    });
-}
-
-function openEventTypeModal(item, refresh) {
-    const isEdit = !!item;
-    const overlay = document.createElement("div");
-    overlay.className = "s-modal-overlay";
-    overlay.innerHTML = `
-    <div class="s-modal">
-      <div class="s-modal-header">
-        <h3>${isEdit ? "Event type bewerken" : "Nieuw event type"}</h3>
-        <button class="s-modal-close" id="et-close">✕</button>
-      </div>
-      <div class="s-grid-2">
-        <div class="s-field">
-          <label>Naam</label>
-          <input id="etf-name" value="${item?.name || ""}" placeholder="bv. Kickoff" />
-        </div>
-        <div class="s-field">
-          <label>Kleur</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="color" id="etf-color-pick" value="${item?.color || "#4d73ff"}" style="width:40px;height:36px;border:none;padding:0;cursor:pointer;border-radius:4px" />
-            <input type="text" id="etf-color" value="${item?.color || "#4d73ff"}" style="flex:1" />
-          </div>
-        </div>
-        <div class="s-field">
-          <label>Standaard capaciteit</label>
-          <input id="etf-cap" type="number" value="${item?.default_capacity || ""}" />
-        </div>
-        <div class="s-field">
-          <label>Standaard catering</label>
-          <input id="etf-catering" value="${item?.default_catering || ""}" placeholder="bv. Drank & lunch" />
-        </div>
-      </div>
-      <div class="s-modal-actions">
-        <button class="s-btn s-btn-ghost" id="et-cancel">Annuleren</button>
-        <button class="s-btn s-btn-primary" id="et-save">${isEdit ? "Opslaan" : "Aanmaken"}</button>
-      </div>
-    </div>`;
-
-    document.body.appendChild(overlay);
-    const picker = document.getElementById("etf-color-pick");
-    const txt = document.getElementById("etf-color");
-    picker.oninput = () => txt.value = picker.value;
-    txt.oninput = () => { if (/^#[0-9a-fA-F]{6}$/.test(txt.value)) picker.value = txt.value; };
-
-    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-    document.getElementById("et-close").onclick = () => overlay.remove();
-    document.getElementById("et-cancel").onclick = () => overlay.remove();
-    document.getElementById("et-save").onclick = async () => {
-        const payload = {
-            brand: store.brandId || "academy",
-            name: document.getElementById("etf-name").value.trim(),
-            color: document.getElementById("etf-color").value,
-            default_capacity: parseInt(document.getElementById("etf-cap").value) || null,
-            default_catering: document.getElementById("etf-catering").value.trim(),
-        };
-        if (!payload.name) { showToast("Naam is verplicht.", "error"); return; }
-        const { error } = isEdit
-            ? await supabase.from("event_types").update(payload).eq("id", item.id)
-            : await supabase.from("event_types").insert([payload]);
-        if (error) { showToast("Fout: " + error.message, "error"); return; }
-        showToast("Opgeslagen.", "success");
-        overlay.remove();
-        refresh();
-    };
-}
-
-// ─── 5. SESSIES & TIJDSLOTS ───────────────────────────────────────────────────
-async function sectionSessies(el) {
-    const { data: sessions } = await supabase.from("session_templates").select("*").order("start_time");
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Sessies & tijdslots</h2>
-      <p>Standaard sessietemplates die hergebruikt worden bij events.</p>
-      <button class="s-btn s-btn-primary" id="add-sess-btn">+ Sessie toevoegen</button>
-    </div>
-    <div id="sess-list">
-      ${renderSessionsList(sessions || [])}
-    </div>`;
-
-    document.getElementById("add-sess-btn").onclick = () => openSessionModal(null, () => loadSection("sessies"));
-    bindSessionActions(sessions || [], () => loadSection("sessies"));
-}
-
-function renderSessionsList(sessions) {
-    if (!sessions.length) return `<div class="s-empty">Geen sessietemplates gevonden.</div>`;
-    return `
-    <div class="s-table-wrap">
-      <table>
-        <thead><tr><th>Naam</th><th>Start</th><th>Einde</th><th>Max. deelnemers</th><th></th></tr></thead>
-        <tbody>
-          ${sessions.map(s => `
-            <tr>
-              <td><strong>${s.name}</strong></td>
-              <td>${s.start_time || "."}</td>
-              <td>${s.end_time || "."}</td>
-              <td>${s.max_participants || "."}</td>
-              <td class="s-row-actions">
-                <button class="s-btn-link edit-sess" data-id="${s.id}">Bewerken</button>
-                <button class="s-btn-link del-sess" data-id="${s.id}">Verwijderen</button>
-              </td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function bindSessionActions(sessions, refresh) {
-    document.querySelectorAll(".edit-sess").forEach(btn => {
-        btn.onclick = () => openSessionModal(sessions.find(s => s.id === btn.dataset.id), refresh);
-    });
-    document.querySelectorAll(".del-sess").forEach(btn => {
-        btn.onclick = async () => {
-            if (!confirm("Sessietemplate verwijderen?")) return;
-            await supabase.from("session_templates").delete().eq("id", btn.dataset.id);
-            showToast("Verwijderd.", "success");
-            refresh();
-        };
-    });
-}
-
-function openSessionModal(item, refresh) {
-    const isEdit = !!item;
-    const overlay = document.createElement("div");
-    overlay.className = "s-modal-overlay";
-    overlay.innerHTML = `
-    <div class="s-modal">
-      <div class="s-modal-header">
-        <h3>${isEdit ? "Sessie bewerken" : "Nieuwe sessie"}</h3>
-        <button class="s-modal-close" id="sess-close">✕</button>
-      </div>
-      <div class="s-grid-2">
-        <div class="s-field" style="grid-column:1/-1">
-          <label>Naam</label>
-          <input id="sf-name" value="${item?.name || ""}" placeholder="bv. Ochtendsessie" />
-        </div>
-        <div class="s-field">
-          <label>Starttijd</label>
-          <input id="sf-start" type="time" value="${item?.start_time || ""}" />
-        </div>
-        <div class="s-field">
-          <label>Eindtijd</label>
-          <input id="sf-end" type="time" value="${item?.end_time || ""}" />
-        </div>
-        <div class="s-field">
-          <label>Max. deelnemers</label>
-          <input id="sf-max" type="number" value="${item?.max_participants || ""}" />
-        </div>
-      </div>
-      <div class="s-modal-actions">
-        <button class="s-btn s-btn-ghost" id="sess-cancel">Annuleren</button>
-        <button class="s-btn s-btn-primary" id="sess-save">${isEdit ? "Opslaan" : "Aanmaken"}</button>
-      </div>
-    </div>`;
-
-    document.body.appendChild(overlay);
-    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-    document.getElementById("sess-close").onclick = () => overlay.remove();
-    document.getElementById("sess-cancel").onclick = () => overlay.remove();
-    document.getElementById("sess-save").onclick = async () => {
-        const payload = {
-            brand: store.brandId || "academy",
-            name: document.getElementById("sf-name").value.trim(),
-            start_time: document.getElementById("sf-start").value,
-            end_time: document.getElementById("sf-end").value,
-            max_participants: parseInt(document.getElementById("sf-max").value) || null,
-        };
-        if (!payload.name) { showToast("Naam is verplicht.", "error"); return; }
-        const { error } = isEdit
-            ? await supabase.from("session_templates").update(payload).eq("id", item.id)
-            : await supabase.from("session_templates").insert([payload]);
-        if (error) { showToast("Fout: " + error.message, "error"); return; }
-        showToast("Opgeslagen.", "success");
-        overlay.remove();
-        refresh();
-    };
-}
-
-// ─── 6. GEBRUIKERS & ROLLEN ───────────────────────────────────────────────────
-async function sectionGebruikers(el) {
-    const { data: profiles } = await supabase.from("profiles").select("*").order("created_at");
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Gebruikers & rollen</h2>
-      <p>Beheer toegang en rollen. Gebruikers worden uitgenodigd via Supabase.</p>
-    </div>
-    <div class="s-info-box">
-      Nieuwe gebruikers uitnodigen: ga naar <strong>Supabase Dashboard → Authentication → Users → Invite user</strong>.
-      Koppel daarna hier de juiste rol en het merk.
-    </div>
-    ${profiles?.length ? `
-      <div class="s-table-wrap">
-        <table>
-          <thead><tr><th>E-mail</th><th>Naam</th><th>Merk</th><th>Rol</th><th>Aangemaakt</th><th></th></tr></thead>
-          <tbody>
-            ${profiles.map(p => `
-              <tr>
-                <td>${p.email || "."}</td>
-                <td>${p.full_name || "."}</td>
-                <td>
-                  <select class="s-inline-select" data-uid="${p.id}" data-field="brand_id">
-                    <option value="academy" ${p.brand_id === "academy" ? "selected" : ""}>Academy</option>
-                    <option value="invest"  ${p.brand_id === "invest" ? "selected" : ""}>Invest</option>
-                    <option value="fund"    ${p.brand_id === "fund" ? "selected" : ""}>Fund</option>
-                  </select>
-                </td>
-                <td>
-                  <select class="s-inline-select" data-uid="${p.id}" data-field="role">
-                    <option value="admin"  ${p.role === "admin" ? "selected" : ""}>Admin</option>
-                    <option value="ops"    ${p.role === "ops" ? "selected" : ""}>Ops</option>
-                    <option value="viewer" ${p.role === "viewer" ? "selected" : ""}>Viewer</option>
-                  </select>
-                </td>
-                <td>${p.created_at ? new Date(p.created_at).toLocaleDateString("nl-BE") : "."}</td>
-                <td class="s-row-actions">
-                  <button class="s-btn-link save-profile" data-uid="${p.id}">Opslaan</button>
-                </td>
-              </tr>`).join("")}
-          </tbody>
-        </table>
-      </div>` : `<div class="s-empty">Geen gebruikers gevonden in de profiles tabel.</div>`}`;
-
-    document.querySelectorAll(".save-profile").forEach(btn => {
-        btn.onclick = async () => {
-            const row = btn.closest("tr");
-            const selects = row.querySelectorAll(".s-inline-select");
-            const update = {};
-            selects.forEach(s => update[s.dataset.field] = s.value);
-            const { error } = await supabase.from("profiles").update(update).eq("id", btn.dataset.uid);
-            if (error) { showToast("Fout: " + error.message, "error"); return; }
-            showToast("Gebruiker bijgewerkt.", "success");
-        };
-    });
-}
-
-// ─── 7. NOTIFICATIES ─────────────────────────────────────────────────────────
-async function sectionNotificaties(el) {
-    const { data: templates } = await supabase.from("notification_templates").select("*");
-
-    const getTemplate = (trigger) =>
-        templates?.find(t => t.trigger_type === trigger && t.brand === (store.brandId || "academy"));
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Notificaties & e-mailtemplates</h2>
-      <p>Configureer wat er verstuurd wordt en wanneer. Variabelen: <code>{{naam}}</code> <code>{{event}}</code> <code>{{datum}}</code> <code>{{locatie}}</code></p>
-    </div>
-    ${NOTIFICATION_TRIGGERS.map(trigger => {
-        const t = getTemplate(trigger.key);
-        return `
-        <div class="s-card" id="notif-${trigger.key}">
-          <div class="s-card-title-row">
-            <div class="s-card-title">${trigger.label}</div>
-            <label class="s-toggle">
-              <input type="checkbox" id="notif-active-${trigger.key}" ${t?.is_active ? "checked" : ""} />
-              <span class="s-toggle-slider"></span>
+          <div class="cp-main-head-actions">
+            <label class="cp-inline-field">
+              <span>Merkcontext</span>
+              <select id="cp-brand-switch">
+                ${BRANDS.map(
+                  (brand) =>
+                    `<option value="${brand.id}" ${brand.id === state.currentBrand ? "selected" : ""}>${brand.label}</option>`
+                ).join("")}
+              </select>
             </label>
+            <button class="cp-btn cp-btn-ghost" id="cp-refresh-section" type="button">Vernieuwen</button>
           </div>
-          <div class="s-field" style="margin-top:12px">
-            <label>Onderwerpregel</label>
-            <input id="notif-subject-${trigger.key}" value="${t?.subject || ""}" placeholder="Onderwerp van de e-mail" />
-          </div>
-          <div class="s-field">
-            <label>Tekst</label>
-            <textarea id="notif-body-${trigger.key}" rows="4" placeholder="Beste {{naam}}, ...">${t?.body || ""}</textarea>
-          </div>
-          <div class="s-actions">
-            <button class="s-btn s-btn-primary" onclick="window.__saveNotif('${trigger.key}')">Opslaan</button>
-          </div>
-        </div>`;
-    }).join("")}`;
+        </header>
 
-    window.__saveNotif = async (triggerKey) => {
-        const brand = store.brandId || "academy";
-        const payload = {
-            brand,
-            trigger_type: triggerKey,
-            subject: document.getElementById(`notif-subject-${triggerKey}`).value,
-            body: document.getElementById(`notif-body-${triggerKey}`).value,
-            is_active: document.getElementById(`notif-active-${triggerKey}`).checked,
-            updated_at: new Date().toISOString(),
-        };
-        const existing = templates?.find(t => t.trigger_type === triggerKey && t.brand === brand);
-        const { error } = existing
-            ? await supabase.from("notification_templates").update(payload).eq("id", existing.id)
-            : await supabase.from("notification_templates").insert([payload]);
-        if (error) { showToast("Fout: " + error.message, "error"); return; }
-        showToast("Template opgeslagen.", "success");
+        <div id="cp-section-content" class="cp-section-content">
+          ${renderLoading("Sectie laden...")}
+        </div>
+      </div>
+    </section>
+  `;
+
+  state.contentEl = state.root.querySelector("#cp-section-content");
+}
+
+function bindShellEvents() {
+  state.root.querySelectorAll(".cp-nav-item").forEach((btn) => {
+    btn.onclick = async () => {
+      const sectionId = btn.dataset.section;
+      if (!sectionId || sectionId === state.activeSection) return;
+      state.activeSection = sectionId;
+      syncActiveNavigation();
+      await loadSection(sectionId);
     };
+  });
+
+  const brandSelect = state.root.querySelector("#cp-brand-switch");
+  brandSelect.onchange = async () => {
+    state.currentBrand = brandSelect.value;
+    store.brandId = state.currentBrand;
+    await loadSection(state.activeSection);
+  };
+
+  state.root.querySelector("#cp-refresh-section").onclick = async () => {
+    await loadSection(state.activeSection);
+  };
 }
 
-// ─── 8. CATERING ─────────────────────────────────────────────────────────────
-async function sectionCatering(el) {
-    const { data: options } = await supabase.from("catering_options").select("*").order("name");
+function syncActiveNavigation() {
+  state.root.querySelectorAll(".cp-nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.section === state.activeSection);
+  });
+}
 
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Catering opties</h2>
-      <p>Centraal beheer van cateringopties die gekoppeld worden aan events.</p>
-      <button class="s-btn s-btn-primary" id="add-cat-btn">+ Optie toevoegen</button>
+async function loadSection(sectionId) {
+  const renderer = SECTION_RENDERERS[sectionId];
+  if (!renderer) {
+    state.contentEl.innerHTML = renderError(`Onbekende sectie: ${esc(sectionId)}`);
+    return;
+  }
+
+  const token = ++state.loadToken;
+  state.contentEl.innerHTML = renderLoading("Data ophalen...");
+
+  try {
+    await renderer(state.contentEl);
+    if (token !== state.loadToken) return;
+  } catch (error) {
+    if (token !== state.loadToken) return;
+    state.contentEl.innerHTML = renderError(error.message || "Onbekende fout");
+  }
+}
+
+async function renderOrganisatieSection(container) {
+  const [settingsRows, locations] = await Promise.all([
+    fetchAppSettings(BRAND_IDS),
+    fetchRows("locations", { columns: "id,name,city,is_active", orderBy: "name" }),
+  ]);
+
+  const locationOptions = (locations || []).filter((location) => location.is_active !== false);
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Organisatie",
+      description:
+        "Beheer de merken van Archer met branding, contactgegevens en standaardlocaties voor hospitality operaties.",
+      sideInfo: `Actief merk in paneel: <strong>${esc(getBrandLabel(state.currentBrand))}</strong>`,
+    })}
+
+    <div class="cp-stack">
+      ${BRANDS.map((brand) => {
+        const brandName = getSetting(settingsRows, brand.id, "brand_name", brand.label);
+        const contactEmail = getSetting(settingsRows, brand.id, "contact_email", brand.fallbackEmail);
+        const accentColor = getSetting(settingsRows, brand.id, "accent_color", brand.fallbackColor);
+        const defaultLocationId = getSetting(settingsRows, brand.id, "default_location_id", "");
+        const logoUrl = getSetting(settingsRows, brand.id, "logo_url", "");
+
+        return `
+          <article class="cp-card cp-brand-card" data-brand-id="${brand.id}">
+            <header class="cp-card-head">
+              <div class="cp-card-title-wrap">
+                <span class="cp-color-bullet" style="background:${esc(accentColor)}"></span>
+                <div>
+                  <h3>${esc(brand.label)}</h3>
+                  <p>Merk ID: <code>${esc(brand.id)}</code></p>
+                </div>
+              </div>
+              <button class="cp-btn cp-btn-primary" data-action="save-brand" type="button">Opslaan</button>
+            </header>
+
+            <div class="cp-grid cp-grid-2">
+              <label class="cp-field">
+                <span>Naam</span>
+                <input type="text" data-field="brand_name" value="${esc(brandName)}" placeholder="Merknaam" />
+              </label>
+
+              <label class="cp-field">
+                <span>Contact e-mail</span>
+                <input type="email" data-field="contact_email" value="${esc(contactEmail)}" placeholder="events@archer.finance" />
+              </label>
+
+              <label class="cp-field">
+                <span>Primaire kleur</span>
+                <div class="cp-inline-input-row">
+                  <input type="color" data-field="accent_color_picker" value="${esc(accentColor)}" />
+                  <input type="text" data-field="accent_color" value="${esc(accentColor)}" placeholder="#4d73ff" />
+                </div>
+              </label>
+
+              <label class="cp-field">
+                <span>Standaardlocatie</span>
+                <select data-field="default_location_id">
+                  <option value="">Geen standaardlocatie</option>
+                  ${locationOptions
+                    .map(
+                      (location) =>
+                        `<option value="${esc(location.id)}" ${String(location.id) === String(defaultLocationId) ? "selected" : ""}>${esc(
+                          `${location.name}${location.city ? ` - ${location.city}` : ""}`
+                        )}</option>`
+                    )
+                    .join("")}
+                </select>
+              </label>
+
+              <label class="cp-field cp-col-span-2">
+                <span>Logo URL</span>
+                <input type="url" data-field="logo_url" value="${esc(logoUrl)}" placeholder="https://..." />
+              </label>
+            </div>
+          </article>
+        `;
+      }).join("")}
     </div>
-    <div id="cat-list">
-      ${renderCateringList(options || [])}
-    </div>`;
+  `;
 
-    document.getElementById("add-cat-btn").onclick = () => openCateringModal(null, () => loadSection("catering"));
-    bindCateringActions(options || [], () => loadSection("catering"));
+  container.querySelectorAll("[data-action='save-brand']").forEach((btn) => {
+    btn.onclick = async () => {
+      const card = btn.closest(".cp-brand-card");
+      const brandId = card.dataset.brandId;
+
+      const pairs = [
+        ["brand_name", readInputValue(card, "brand_name")],
+        ["contact_email", readInputValue(card, "contact_email")],
+        ["accent_color", readInputValue(card, "accent_color") || "#4d73ff"],
+        ["default_location_id", readInputValue(card, "default_location_id")],
+        ["logo_url", readInputValue(card, "logo_url")],
+      ];
+
+      const error = await upsertSettings(brandId, pairs);
+      if (error) {
+        showToast(`Fout bij opslaan: ${error.message}`, "error");
+        return;
+      }
+
+      showToast(`Instellingen opgeslagen voor ${getBrandLabel(brandId)}.`, "success");
+      await loadSection("organisatie");
+    };
+  });
+
+  container.querySelectorAll(".cp-brand-card").forEach((card) => {
+    const colorInput = card.querySelector("[data-field='accent_color']");
+    const colorPicker = card.querySelector("[data-field='accent_color_picker']");
+    colorPicker.oninput = () => {
+      colorInput.value = colorPicker.value;
+    };
+    colorInput.oninput = () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(colorInput.value.trim())) colorPicker.value = colorInput.value.trim();
+    };
+  });
 }
 
-function renderCateringList(options) {
-    if (!options.length) return `<div class="s-empty">Geen cateringopties gevonden.</div>`;
-    return `
-    <div class="s-table-wrap">
-      <table>
-        <thead><tr><th>Naam</th><th>Beschrijving</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          ${options.map(o => `
+async function renderLocatiesSection(container) {
+  const locations = await fetchRows("locations", { brandScoped: true, orderBy: "name" });
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Locaties",
+      description:
+        "Beheer alle fysieke locaties waar events plaatsvinden. Deactiveren bewaart historische data voor rapportering.",
+      actions: `<button class="cp-btn cp-btn-primary" id="cp-add-location" type="button">+ Locatie toevoegen</button>`,
+    })}
+
+    ${locations.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table">
+          <thead>
             <tr>
-              <td><strong>${o.name}</strong></td>
-              <td>${o.description || "."}</td>
-              <td><span class="s-badge ${o.is_active ? "s-badge-active" : "s-badge-off"}">${o.is_active ? "Actief" : "Inactief"}</span></td>
-              <td class="s-row-actions">
-                <button class="s-btn-link edit-cat" data-id="${o.id}">Bewerken</button>
-                <button class="s-btn-link toggle-cat" data-id="${o.id}" data-active="${o.is_active}">${o.is_active ? "Deactiveren" : "Activeren"}</button>
-              </td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function bindCateringActions(options, refresh) {
-    document.querySelectorAll(".edit-cat").forEach(btn => {
-        btn.onclick = () => openCateringModal(options.find(o => o.id === btn.dataset.id), refresh);
-    });
-    document.querySelectorAll(".toggle-cat").forEach(btn => {
-        btn.onclick = async () => {
-            await supabase.from("catering_options").update({ is_active: btn.dataset.active === "true" ? false : true }).eq("id", btn.dataset.id);
-            showToast("Status bijgewerkt.", "success");
-            refresh();
-        };
-    });
-}
-
-function openCateringModal(item, refresh) {
-    const isEdit = !!item;
-    const overlay = document.createElement("div");
-    overlay.className = "s-modal-overlay";
-    overlay.innerHTML = `
-    <div class="s-modal">
-      <div class="s-modal-header">
-        <h3>${isEdit ? "Catering bewerken" : "Nieuwe cateringoptie"}</h3>
-        <button class="s-modal-close" id="cat-close">✕</button>
-      </div>
-      <div class="s-field">
-        <label>Naam</label>
-        <input id="cf-name" value="${item?.name || ""}" placeholder="bv. Drank & lunch" />
-      </div>
-      <div class="s-field">
-        <label>Beschrijving</label>
-        <textarea id="cf-desc" rows="2">${item?.description || ""}</textarea>
-      </div>
-      <div class="s-modal-actions">
-        <button class="s-btn s-btn-ghost" id="cat-cancel">Annuleren</button>
-        <button class="s-btn s-btn-primary" id="cat-save">${isEdit ? "Opslaan" : "Aanmaken"}</button>
-      </div>
-    </div>`;
-
-    document.body.appendChild(overlay);
-    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-    document.getElementById("cat-close").onclick = () => overlay.remove();
-    document.getElementById("cat-cancel").onclick = () => overlay.remove();
-    document.getElementById("cat-save").onclick = async () => {
-        const payload = {
-            brand: store.brandId || "academy",
-            name: document.getElementById("cf-name").value.trim(),
-            description: document.getElementById("cf-desc").value.trim(),
-        };
-        if (!payload.name) { showToast("Naam is verplicht.", "error"); return; }
-        const { error } = isEdit
-            ? await supabase.from("catering_options").update(payload).eq("id", item.id)
-            : await supabase.from("catering_options").insert([payload]);
-        if (error) { showToast("Fout: " + error.message, "error"); return; }
-        showToast("Opgeslagen.", "success");
-        overlay.remove();
-        refresh();
-    };
-}
-
-// ─── 9. EXPORT & INTEGRATIES ──────────────────────────────────────────────────
-async function sectionExport(el) {
-    const brand = store.brandId || "academy";
-    const { data: settings } = await supabase.from("app_settings").select("*").eq("brand", brand);
-    const getSetting = key => settings?.find(s => s.key === key)?.value || "";
-
-    const exportFields = ["title", "location", "event_date", "start_at", "end_at", "capacity", "program", "participant_group", "catering", "status"];
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Export & integraties</h2>
-      <p>Configureer exportinstellingen en externe koppelingen.</p>
-    </div>
-
-    <div class="s-card">
-      <div class="s-card-title">CSV Export</div>
-      <div class="s-field">
-        <label>Standaard exportvelden</label>
-        <div class="s-checkboxes">
-          ${exportFields.map(f => `
-            <label class="s-checkbox">
-              <input type="checkbox" class="export-field-cb" value="${f}"
-                ${(getSetting("export_fields") || exportFields.join(",")).split(",").includes(f) ? "checked" : ""} />
-              ${f}
-            </label>`).join("")}
-        </div>
-      </div>
-      <div class="s-grid-2">
-        <div class="s-field">
-          <label>Datumformaat</label>
-          <select id="exp-dateformat">
-            <option value="DD/MM/YYYY" ${getSetting("export_dateformat") === "DD/MM/YYYY" ? "selected" : ""}>DD/MM/YYYY</option>
-            <option value="ISO"        ${getSetting("export_dateformat") === "ISO" ? "selected" : ""}>ISO 8601</option>
-          </select>
-        </div>
-        <div class="s-field">
-          <label>Bestandsnaam patroon</label>
-          <input id="exp-filename" value="${getSetting("export_filename") || "archer_events_{{datum}}.csv"}" />
-        </div>
-      </div>
-      <div class="s-actions">
-        <button class="s-btn s-btn-primary" id="save-export-btn">Opslaan</button>
-      </div>
-    </div>
-
-    <div class="s-card">
-      <div class="s-card-title">Integraties</div>
-      <div class="s-field">
-        <label>Webhook URL</label>
-        <input id="exp-webhook" type="url" value="${getSetting("webhook_url") || ""}" placeholder="https://hooks.zapier.com/..." />
-      </div>
-      <div class="s-field">
-        <label>Read-only API key (voor externe tools)</label>
-        <div style="display:flex;gap:8px">
-          <input id="exp-apikey" value="${getSetting("api_key") || ""}" readonly style="font-family:monospace;font-size:12px" />
-          <button class="s-btn s-btn-ghost" id="gen-apikey-btn">Genereren</button>
-        </div>
-      </div>
-      <div class="s-actions">
-        <button class="s-btn s-btn-primary" id="save-integrations-btn">Opslaan</button>
-      </div>
-    </div>`;
-
-    document.getElementById("gen-apikey-btn").onclick = () => {
-        document.getElementById("exp-apikey").value = "ak_" + crypto.randomUUID().replace(/-/g, "");
-    };
-
-    document.getElementById("save-export-btn").onclick = async () => {
-        const fields = [...document.querySelectorAll(".export-field-cb:checked")].map(c => c.value).join(",");
-        const pairs = [
-            ["export_fields", fields],
-            ["export_dateformat", document.getElementById("exp-dateformat").value],
-            ["export_filename", document.getElementById("exp-filename").value],
-        ];
-        for (const [key, value] of pairs)
-            await supabase.from("app_settings").upsert({ brand, key, value }, { onConflict: "brand,key" });
-        showToast("Export instellingen opgeslagen.", "success");
-    };
-
-    document.getElementById("save-integrations-btn").onclick = async () => {
-        const pairs = [
-            ["webhook_url", document.getElementById("exp-webhook").value],
-            ["api_key", document.getElementById("exp-apikey").value],
-        ];
-        for (const [key, value] of pairs)
-            await supabase.from("app_settings").upsert({ brand, key, value }, { onConflict: "brand,key" });
-        showToast("Integraties opgeslagen.", "success");
-    };
-}
-
-// ─── 10. AUDIT LOG ────────────────────────────────────────────────────────────
-async function sectionAuditLog(el) {
-    const { data: logs } = await supabase
-        .from("audit_log")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-    el.innerHTML = `
-    <div class="s-section-header">
-      <h2>Audit log</h2>
-      <p>Overzicht van de laatste 100 kritieke acties.</p>
-    </div>
-    ${logs?.length ? `
-      <div class="s-table-wrap">
-        <table>
-          <thead><tr><th>Tijdstip</th><th>Gebruiker</th><th>Actie</th><th>Tabel</th><th>Record ID</th></tr></thead>
+              <th>Locatie</th>
+              <th>Adres</th>
+              <th>Capaciteit</th>
+              <th>Faciliteiten</th>
+              <th>Status</th>
+              <th class="cp-ta-right">Acties</th>
+            </tr>
+          </thead>
           <tbody>
-            ${logs.map(l => `
-              <tr>
-                <td style="white-space:nowrap;font-size:12px">${new Date(l.created_at).toLocaleString("nl-BE")}</td>
-                <td style="font-size:12px">${l.actor_id?.slice(0, 8) || "."}</td>
-                <td><span class="s-badge s-badge-action">${l.action}</span></td>
-                <td style="font-size:12px;color:#999">${l.table_name || "."}</td>
-                <td style="font-size:11px;color:#bbb;font-family:monospace">${l.record_id?.slice(0, 12) || "."}</td>
-              </tr>`).join("")}
+            ${locations
+              .map((location) => {
+                const facilities = ensureArray(location.facilities);
+                const address = [location.address, location.postal_code, location.city, location.country].filter(Boolean).join(", ");
+                return `
+                  <tr>
+                    <td>
+                      <strong>${esc(location.name || "-")}</strong>
+                      <small>${esc(location.brand || state.currentBrand)}</small>
+                    </td>
+                    <td>${esc(address || "-")}</td>
+                    <td>${location.capacity || "-"}</td>
+                    <td>${renderTagList(facilities, 3)}</td>
+                    <td>${renderStatusBadge(location.is_active !== false)}</td>
+                    <td class="cp-ta-right">
+                      <div class="cp-row-actions">
+                        <button class="cp-btn-link" data-action="edit-location" data-id="${location.id}" type="button">Bewerken</button>
+                        <button class="cp-btn-link" data-action="toggle-location" data-id="${location.id}" data-active="${String(
+                          location.is_active !== false
+                        )}" type="button">${location.is_active !== false ? "Deactiveren" : "Activeren"}</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              })
+              .join("")}
           </tbody>
         </table>
-      </div>` : `<div class="s-empty">Geen audit log entries gevonden.</div>`}`;
-}
-
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-function renderSimpleList(items, fields, labels, prefix) {
-    if (!items.length) return `<div class="s-empty">Geen items gevonden.</div>`;
-    return `
-    <div class="s-table-wrap">
-      <table>
-        <thead><tr>${labels.map(l => `<th>${l}</th>`).join("")}<th>Status</th><th></th></tr></thead>
-        <tbody>
-          ${items.map(item => `
-            <tr>
-              ${fields.map(f => `<td>${item[f] || "."}</td>`).join("")}
-              <td><span class="s-badge ${item.is_active !== false ? "s-badge-active" : "s-badge-off"}">${item.is_active !== false ? "Actief" : "Inactief"}</span></td>
-              <td class="s-row-actions">
-                <button class="s-btn-link edit-${prefix}" data-id="${item.id}">Bewerken</button>
-                <button class="s-btn-link toggle-${prefix}" data-id="${item.id}" data-active="${item.is_active}">${item.is_active !== false ? "Deactiveren" : "Activeren"}</button>
-              </td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function bindSimpleActions(prefix, items, table, fields, labels, refresh) {
-    document.querySelectorAll(`.edit-${prefix}`).forEach(btn => {
-        btn.onclick = () => openSimpleModal(table, items.find(i => i.id === btn.dataset.id), fields, labels, refresh);
-    });
-    document.querySelectorAll(`.toggle-${prefix}`).forEach(btn => {
-        btn.onclick = async () => {
-            await supabase.from(table).update({ is_active: btn.dataset.active === "true" ? false : true }).eq("id", btn.dataset.id);
-            showToast("Status bijgewerkt.", "success");
-            refresh();
-        };
-    });
-}
-
-function openSimpleModal(table, item, fields, labels, refresh) {
-    const isEdit = !!item;
-    const overlay = document.createElement("div");
-    overlay.className = "s-modal-overlay";
-    overlay.innerHTML = `
-    <div class="s-modal">
-      <div class="s-modal-header">
-        <h3>${isEdit ? "Bewerken" : "Nieuw item"}</h3>
-        <button class="s-modal-close" id="sm-close">✕</button>
       </div>
-      ${fields.map((f, i) => `
-        <div class="s-field">
-          <label>${labels[i]}</label>
-          <input id="smf-${f}" value="${item?.[f] || ""}" />
-        </div>`).join("")}
-      <div class="s-modal-actions">
-        <button class="s-btn s-btn-ghost" id="sm-cancel">Annuleren</button>
-        <button class="s-btn s-btn-primary" id="sm-save">${isEdit ? "Opslaan" : "Aanmaken"}</button>
-      </div>
-    </div>`;
+    `
+      : renderEmptyState("Nog geen locaties", "Voeg de eerste locatie toe zodat teams events kunnen plannen.")}
+  `;
 
-    document.body.appendChild(overlay);
-    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-    document.getElementById("sm-close").onclick = () => overlay.remove();
-    document.getElementById("sm-cancel").onclick = () => overlay.remove();
-    document.getElementById("sm-save").onclick = async () => {
-        const payload = { brand: store.brandId || "academy" };
-        fields.forEach(f => payload[f] = document.getElementById(`smf-${f}`)?.value?.trim());
-        if (!payload[fields[0]]) { showToast("Naam is verplicht.", "error"); return; }
-        const { error } = isEdit
-            ? await supabase.from(table).update(payload).eq("id", item.id)
-            : await supabase.from(table).insert([payload]);
-        if (error) { showToast("Fout: " + error.message, "error"); return; }
-        showToast("Opgeslagen.", "success");
-        overlay.remove();
-        refresh();
+  container.querySelector("#cp-add-location").onclick = () => openLocationModal(null);
+
+  container.querySelectorAll("[data-action='edit-location']").forEach((btn) => {
+    btn.onclick = () => {
+      const location = locations.find((entry) => String(entry.id) === String(btn.dataset.id));
+      if (location) openLocationModal(location);
     };
+  });
+
+  container.querySelectorAll("[data-action='toggle-location']").forEach((btn) => {
+    btn.onclick = async () => {
+      const isActive = btn.dataset.active === "true";
+      const { error } = await saveRecord({
+        table: "locations",
+        id: btn.dataset.id,
+        payload: { is_active: !isActive },
+        optionalColumns: ["is_active"],
+      });
+
+      if (error) {
+        showToast(`Status kon niet worden aangepast: ${error.message}`, "error");
+        return;
+      }
+
+      showToast("Locatiestatus bijgewerkt.", "success");
+      await loadSection("locaties");
+    };
+  });
+}
+
+function openLocationModal(location) {
+  const isEdit = !!location;
+  const selectedFacilities = ensureArray(location?.facilities);
+
+  openModal({
+    title: isEdit ? "Locatie bewerken" : "Nieuwe locatie",
+    description: "Vastleggen van venue data voor planning, operationele checklists en capaciteit.",
+    saveLabel: isEdit ? "Opslaan" : "Aanmaken",
+    body: `
+      <div class="cp-grid cp-grid-2">
+        <label class="cp-field cp-col-span-2">
+          <span>Naam</span>
+          <input id="cp-loc-name" type="text" value="${esc(location?.name || "")}" placeholder="Archer HQ" />
+        </label>
+
+        <label class="cp-field">
+          <span>Adres</span>
+          <input id="cp-loc-address" type="text" value="${esc(location?.address || "")}" placeholder="Straat + nummer" />
+        </label>
+
+        <label class="cp-field">
+          <span>Stad</span>
+          <input id="cp-loc-city" type="text" value="${esc(location?.city || "")}" placeholder="Brussel" />
+        </label>
+
+        <label class="cp-field">
+          <span>Postcode</span>
+          <input id="cp-loc-postal" type="text" value="${esc(location?.postal_code || "")}" placeholder="1000" />
+        </label>
+
+        <label class="cp-field">
+          <span>Land</span>
+          <input id="cp-loc-country" type="text" value="${esc(location?.country || "Belgie")}" placeholder="Belgie" />
+        </label>
+
+        <label class="cp-field">
+          <span>Capaciteit (max personen)</span>
+          <input id="cp-loc-capacity" type="number" min="0" value="${location?.capacity ?? ""}" />
+        </label>
+
+        <label class="cp-field cp-col-span-2">
+          <span>Notities</span>
+          <textarea id="cp-loc-notes" rows="3" placeholder="Operationele opmerkingen, toegangsinstructies, ...">${esc(
+            location?.notes || ""
+          )}</textarea>
+        </label>
+
+        <div class="cp-field cp-col-span-2">
+          <span>Faciliteiten</span>
+          <div class="cp-chip-check-wrap">
+            ${FACILITY_OPTIONS.map(
+              (facility) => `
+              <label class="cp-chip-check">
+                <input type="checkbox" value="${facility}" ${selectedFacilities.includes(facility) ? "checked" : ""} />
+                <span>${facility}</span>
+              </label>
+            `
+            ).join("")}
+          </div>
+        </div>
+
+        <label class="cp-field cp-col-span-2 cp-toggle-field">
+          <span>Actief</span>
+          <input id="cp-loc-active" type="checkbox" ${location?.is_active !== false ? "checked" : ""} />
+        </label>
+      </div>
+    `,
+    onSave: async (overlay) => {
+      const name = overlay.querySelector("#cp-loc-name").value.trim();
+      if (!name) {
+        showToast("Naam is verplicht.", "error");
+        return false;
+      }
+
+      const payload = {
+        brand: state.currentBrand,
+        name,
+        address: overlay.querySelector("#cp-loc-address").value.trim(),
+        city: overlay.querySelector("#cp-loc-city").value.trim(),
+        postal_code: overlay.querySelector("#cp-loc-postal").value.trim(),
+        country: overlay.querySelector("#cp-loc-country").value.trim(),
+        capacity: parseNullableInt(overlay.querySelector("#cp-loc-capacity").value),
+        notes: overlay.querySelector("#cp-loc-notes").value.trim(),
+        facilities: [...overlay.querySelectorAll(".cp-chip-check input:checked")].map((entry) => entry.value),
+        is_active: overlay.querySelector("#cp-loc-active").checked,
+      };
+
+      const { error } = await saveRecord({
+        table: "locations",
+        id: location?.id,
+        payload,
+        optionalColumns: ["brand", "country", "is_active"],
+      });
+
+      if (error) {
+        showToast(`Opslaan mislukt: ${error.message}`, "error");
+        return false;
+      }
+
+      showToast(isEdit ? "Locatie bijgewerkt." : "Locatie aangemaakt.", "success");
+      await loadSection("locaties");
+      return true;
+    },
+  });
+}
+
+async function renderProgrammasSection(container) {
+  const programs = await fetchRows("programs", { brandScoped: true, orderBy: "name" });
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Programma's",
+      description:
+        "Configureer programma-categorieen (mentorship, workshop, masterclass, ...) per merkcontext.",
+      actions: `<button class="cp-btn cp-btn-primary" id="cp-add-program" type="button">+ Programma toevoegen</button>`,
+    })}
+
+    ${programs.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table">
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>Beschrijving</th>
+              <th>Merk</th>
+              <th>Status</th>
+              <th class="cp-ta-right">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${programs
+              .map(
+                (program) => `
+              <tr>
+                <td><strong>${esc(program.name || "-")}</strong></td>
+                <td>${esc(program.description || "-")}</td>
+                <td>${esc(getBrandLabel(program.brand || state.currentBrand))}</td>
+                <td>${renderStatusBadge(program.is_active !== false)}</td>
+                <td class="cp-ta-right">
+                  <div class="cp-row-actions">
+                    <button class="cp-btn-link" data-action="edit-program" data-id="${program.id}" type="button">Bewerken</button>
+                    <button class="cp-btn-link" data-action="toggle-program" data-id="${program.id}" data-active="${String(
+                      program.is_active !== false
+                    )}" type="button">${program.is_active !== false ? "Deactiveren" : "Activeren"}</button>
+                  </div>
+                </td>
+              </tr>
+            `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : renderEmptyState("Geen programma's", "Voeg categorieen toe om events consistenter op te zetten.")}
+  `;
+
+  container.querySelector("#cp-add-program").onclick = () => openProgramModal(null);
+
+  container.querySelectorAll("[data-action='edit-program']").forEach((btn) => {
+    btn.onclick = () => {
+      const program = programs.find((entry) => String(entry.id) === String(btn.dataset.id));
+      if (program) openProgramModal(program);
+    };
+  });
+
+  container.querySelectorAll("[data-action='toggle-program']").forEach((btn) => {
+    btn.onclick = async () => {
+      const isActive = btn.dataset.active === "true";
+      const { error } = await saveRecord({
+        table: "programs",
+        id: btn.dataset.id,
+        payload: { is_active: !isActive },
+        optionalColumns: ["is_active"],
+      });
+
+      if (error) {
+        showToast(`Statusupdate mislukt: ${error.message}`, "error");
+        return;
+      }
+
+      showToast("Programmastatus bijgewerkt.", "success");
+      await loadSection("programmas");
+    };
+  });
+}
+
+function openProgramModal(program) {
+  const isEdit = !!program;
+
+  openModal({
+    title: isEdit ? "Programma bewerken" : "Nieuw programma",
+    description: "Gebruik duidelijke categorieen zodat operationele rapporten en planning uniform blijven.",
+    saveLabel: isEdit ? "Opslaan" : "Aanmaken",
+    body: `
+      <div class="cp-grid cp-grid-2">
+        <label class="cp-field cp-col-span-2">
+          <span>Naam</span>
+          <input id="cp-program-name" type="text" value="${esc(program?.name || "")}" placeholder="Masterclass" />
+        </label>
+
+        <label class="cp-field cp-col-span-2">
+          <span>Beschrijving</span>
+          <textarea id="cp-program-description" rows="3" placeholder="Context en doel van dit programma">${esc(
+            program?.description || ""
+          )}</textarea>
+        </label>
+
+        <label class="cp-field">
+          <span>Merk</span>
+          <select id="cp-program-brand">
+            ${renderBrandOptions(program?.brand || state.currentBrand)}
+          </select>
+        </label>
+
+        <label class="cp-field cp-toggle-field">
+          <span>Actief</span>
+          <input id="cp-program-active" type="checkbox" ${program?.is_active !== false ? "checked" : ""} />
+        </label>
+      </div>
+    `,
+    onSave: async (overlay) => {
+      const name = overlay.querySelector("#cp-program-name").value.trim();
+      if (!name) {
+        showToast("Naam is verplicht.", "error");
+        return false;
+      }
+
+      const payload = {
+        brand: overlay.querySelector("#cp-program-brand").value,
+        name,
+        description: overlay.querySelector("#cp-program-description").value.trim(),
+        is_active: overlay.querySelector("#cp-program-active").checked,
+      };
+
+      const { error } = await saveRecord({
+        table: "programs",
+        id: program?.id,
+        payload,
+        optionalColumns: ["is_active", "brand"],
+      });
+
+      if (error) {
+        showToast(`Opslaan mislukt: ${error.message}`, "error");
+        return false;
+      }
+
+      showToast("Programma opgeslagen.", "success");
+      await loadSection("programmas");
+      return true;
+    },
+  });
+}
+
+async function renderEventTypesSection(container) {
+  const types = await fetchRows("event_types", { brandScoped: true, orderBy: "name" });
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Event types",
+      description:
+        "Stel eventtype defaults in zoals badgekleur, capaciteit en standaard catering, vergelijkbaar met PMS templates.",
+      actions: `<button class="cp-btn cp-btn-primary" id="cp-add-event-type" type="button">+ Event type toevoegen</button>`,
+    })}
+
+    ${types.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table">
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>Kleur</th>
+              <th>Standaard capaciteit</th>
+              <th>Standaard catering</th>
+              <th>Status</th>
+              <th class="cp-ta-right">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${types
+              .map(
+                (eventType) => `
+              <tr>
+                <td>
+                  <strong>${esc(eventType.name || "-")}</strong>
+                  <small>${esc(eventType.description || "")}</small>
+                </td>
+                <td>
+                  <span class="cp-color-bullet-square" style="background:${esc(eventType.color || "#4d73ff")}"></span>
+                  ${esc(eventType.color || "#4d73ff")}
+                </td>
+                <td>${eventType.default_capacity || "-"}</td>
+                <td>${esc(eventType.default_catering || "-")}</td>
+                <td>${renderStatusBadge(eventType.is_active !== false)}</td>
+                <td class="cp-ta-right">
+                  <div class="cp-row-actions">
+                    <button class="cp-btn-link" data-action="edit-event-type" data-id="${eventType.id}" type="button">Bewerken</button>
+                    <button class="cp-btn-link" data-action="toggle-event-type" data-id="${eventType.id}" data-active="${String(
+                      eventType.is_active !== false
+                    )}" type="button">${eventType.is_active !== false ? "Deactiveren" : "Activeren"}</button>
+                  </div>
+                </td>
+              </tr>
+            `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : renderEmptyState("Geen event types", "Voeg templates toe voor consistente setup van events.")}
+  `;
+
+  container.querySelector("#cp-add-event-type").onclick = () => openEventTypeModal(null);
+
+  container.querySelectorAll("[data-action='edit-event-type']").forEach((btn) => {
+    btn.onclick = () => {
+      const eventType = types.find((entry) => String(entry.id) === String(btn.dataset.id));
+      if (eventType) openEventTypeModal(eventType);
+    };
+  });
+
+  container.querySelectorAll("[data-action='toggle-event-type']").forEach((btn) => {
+    btn.onclick = async () => {
+      const isActive = btn.dataset.active === "true";
+      const { error } = await saveRecord({
+        table: "event_types",
+        id: btn.dataset.id,
+        payload: { is_active: !isActive },
+        optionalColumns: ["is_active"],
+      });
+
+      if (error) {
+        showToast(`Statusupdate mislukt: ${error.message}`, "error");
+        return;
+      }
+
+      showToast("Event type status bijgewerkt.", "success");
+      await loadSection("event-types");
+    };
+  });
+}
+
+function openEventTypeModal(eventType) {
+  const isEdit = !!eventType;
+
+  const overlay = openModal({
+    title: isEdit ? "Event type bewerken" : "Nieuw event type",
+    description: "Templates versnellen eventcreatie en zorgen voor consistente servicekwaliteit.",
+    saveLabel: isEdit ? "Opslaan" : "Aanmaken",
+    body: `
+      <div class="cp-grid cp-grid-2">
+        <label class="cp-field">
+          <span>Naam</span>
+          <input id="cp-et-name" type="text" value="${esc(eventType?.name || "")}" placeholder="Kickoff" />
+        </label>
+
+        <label class="cp-field">
+          <span>Merk</span>
+          <select id="cp-et-brand">
+            ${renderBrandOptions(eventType?.brand || state.currentBrand)}
+          </select>
+        </label>
+
+        <label class="cp-field">
+          <span>Kleur</span>
+          <div class="cp-inline-input-row">
+            <input id="cp-et-color-picker" type="color" value="${esc(eventType?.color || "#4d73ff")}" />
+            <input id="cp-et-color" type="text" value="${esc(eventType?.color || "#4d73ff")}" placeholder="#4d73ff" />
+          </div>
+        </label>
+
+        <label class="cp-field">
+          <span>Standaard capaciteit</span>
+          <input id="cp-et-capacity" type="number" min="0" value="${eventType?.default_capacity ?? ""}" />
+        </label>
+
+        <label class="cp-field cp-col-span-2">
+          <span>Standaard catering</span>
+          <input id="cp-et-catering" type="text" value="${esc(eventType?.default_catering || "")}" placeholder="Drank + lunch" />
+        </label>
+
+        <label class="cp-field cp-col-span-2">
+          <span>Beschrijving</span>
+          <textarea id="cp-et-description" rows="3" placeholder="Wanneer dit type gebruikt wordt">${esc(
+            eventType?.description || ""
+          )}</textarea>
+        </label>
+
+        <label class="cp-field cp-toggle-field cp-col-span-2">
+          <span>Actief</span>
+          <input id="cp-et-active" type="checkbox" ${eventType?.is_active !== false ? "checked" : ""} />
+        </label>
+      </div>
+    `,
+    onSave: async (overlay) => {
+      const name = overlay.querySelector("#cp-et-name").value.trim();
+      if (!name) {
+        showToast("Naam is verplicht.", "error");
+        return false;
+      }
+
+      const payload = {
+        brand: overlay.querySelector("#cp-et-brand").value,
+        name,
+        color: overlay.querySelector("#cp-et-color").value.trim() || "#4d73ff",
+        default_capacity: parseNullableInt(overlay.querySelector("#cp-et-capacity").value),
+        default_catering: overlay.querySelector("#cp-et-catering").value.trim(),
+        description: overlay.querySelector("#cp-et-description").value.trim(),
+        is_active: overlay.querySelector("#cp-et-active").checked,
+      };
+
+      const { error } = await saveRecord({
+        table: "event_types",
+        id: eventType?.id,
+        payload,
+        optionalColumns: ["description", "is_active", "brand"],
+      });
+
+      if (error) {
+        showToast(`Opslaan mislukt: ${error.message}`, "error");
+        return false;
+      }
+
+      showToast("Event type opgeslagen.", "success");
+      await loadSection("event-types");
+      return true;
+    },
+  });
+
+  if (!overlay) return;
+
+  const picker = overlay.querySelector("#cp-et-color-picker");
+  const input = overlay.querySelector("#cp-et-color");
+
+  picker.oninput = () => {
+    input.value = picker.value;
+  };
+
+  input.oninput = () => {
+    if (/^#[0-9a-fA-F]{6}$/.test(input.value.trim())) picker.value = input.value.trim();
+  };
+}
+
+async function renderSessiesSection(container) {
+  const [sessions, eventTypes] = await Promise.all([
+    fetchRows("session_templates", { brandScoped: true, orderBy: "start_time" }),
+    fetchRows("event_types", { brandScoped: true, orderBy: "name" }).catch(() => []),
+  ]);
+
+  const eventTypeById = Object.fromEntries((eventTypes || []).map((eventType) => [eventType.id, eventType]));
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Sessies & tijdslots",
+      description:
+        "Standaard sessietemplates voor ochtendsessies, middagsessies en avondevents. Handig voor repetitieve hotel/event workflows.",
+      actions: `<button class="cp-btn cp-btn-primary" id="cp-add-session" type="button">+ Sessietemplate toevoegen</button>`,
+    })}
+
+    ${sessions.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table">
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>Start</th>
+              <th>Einde</th>
+              <th>Max deelnemers</th>
+              <th>Event type</th>
+              <th class="cp-ta-right">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sessions
+              .map((session) => {
+                const typeLabel =
+                  session.default_event_type ||
+                  eventTypeById[session.event_type_id]?.name ||
+                  session.event_type ||
+                  "-";
+
+                return `
+                  <tr>
+                    <td><strong>${esc(session.name || "-")}</strong></td>
+                    <td>${esc(session.start_time || "-")}</td>
+                    <td>${esc(session.end_time || "-")}</td>
+                    <td>${session.max_participants || "-"}</td>
+                    <td>${esc(typeLabel)}</td>
+                    <td class="cp-ta-right">
+                      <div class="cp-row-actions">
+                        <button class="cp-btn-link" data-action="edit-session" data-id="${session.id}" type="button">Bewerken</button>
+                        <button class="cp-btn-link cp-btn-link-danger" data-action="delete-session" data-id="${session.id}" type="button">Verwijderen</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : renderEmptyState("Nog geen sessietemplates", "Voeg templates toe om nieuwe events sneller te plannen.")}
+  `;
+
+  container.querySelector("#cp-add-session").onclick = () => openSessionModal(null, eventTypes);
+
+  container.querySelectorAll("[data-action='edit-session']").forEach((btn) => {
+    btn.onclick = () => {
+      const session = sessions.find((entry) => String(entry.id) === String(btn.dataset.id));
+      if (session) openSessionModal(session, eventTypes);
+    };
+  });
+
+  container.querySelectorAll("[data-action='delete-session']").forEach((btn) => {
+    btn.onclick = async () => {
+      const confirmed = window.confirm("Sessie verwijderen? Deze actie kan historische referenties beïnvloeden.");
+      if (!confirmed) return;
+
+      const { error } = await supabase.from("session_templates").delete().eq("id", btn.dataset.id);
+      if (error) {
+        showToast(`Verwijderen mislukt: ${error.message}`, "error");
+        return;
+      }
+
+      showToast("Sessietemplate verwijderd.", "success");
+      await loadSection("sessies");
+    };
+  });
+}
+
+function openSessionModal(session, eventTypes = []) {
+  const isEdit = !!session;
+  const selectedEventTypeId = session?.event_type_id || "";
+  const selectedEventTypeName = session?.default_event_type || session?.event_type || "";
+
+  openModal({
+    title: isEdit ? "Sessietemplate bewerken" : "Nieuwe sessietemplate",
+    description: "Koppel slots aan eventtypes voor voorspelbare planning in operations.",
+    saveLabel: isEdit ? "Opslaan" : "Aanmaken",
+    body: `
+      <div class="cp-grid cp-grid-2">
+        <label class="cp-field cp-col-span-2">
+          <span>Naam</span>
+          <input id="cp-session-name" type="text" value="${esc(session?.name || "")}" placeholder="Ochtendsessie" />
+        </label>
+
+        <label class="cp-field">
+          <span>Starttijd</span>
+          <input id="cp-session-start" type="time" value="${esc(session?.start_time || "")}" />
+        </label>
+
+        <label class="cp-field">
+          <span>Eindtijd</span>
+          <input id="cp-session-end" type="time" value="${esc(session?.end_time || "")}" />
+        </label>
+
+        <label class="cp-field">
+          <span>Max deelnemers</span>
+          <input id="cp-session-max" type="number" min="0" value="${session?.max_participants ?? ""}" />
+        </label>
+
+        <label class="cp-field">
+          <span>Standaard event type</span>
+          <select id="cp-session-event-type">
+            <option value="">Geen standaard event type</option>
+            ${eventTypes
+              .map(
+                (eventType) =>
+                  `<option value="${esc(eventType.id)}" data-name="${esc(eventType.name || "")}" ${String(
+                    eventType.id
+                  ) === String(selectedEventTypeId)
+                    ? "selected"
+                    : ""}>${esc(eventType.name || "-")}</option>`
+              )
+              .join("")}
+          </select>
+        </label>
+
+        <label class="cp-field cp-col-span-2">
+          <span>Fallback event type naam</span>
+          <input id="cp-session-event-type-name" type="text" value="${esc(selectedEventTypeName)}" placeholder="Kickoff" />
+        </label>
+      </div>
+    `,
+    onSave: async (overlay) => {
+      const name = overlay.querySelector("#cp-session-name").value.trim();
+      if (!name) {
+        showToast("Naam is verplicht.", "error");
+        return false;
+      }
+
+      const typeSelect = overlay.querySelector("#cp-session-event-type");
+      const selectedOption = typeSelect.options[typeSelect.selectedIndex];
+      const defaultTypeName =
+        overlay.querySelector("#cp-session-event-type-name").value.trim() || selectedOption?.dataset?.name || "";
+
+      const payload = {
+        brand: state.currentBrand,
+        name,
+        start_time: overlay.querySelector("#cp-session-start").value,
+        end_time: overlay.querySelector("#cp-session-end").value,
+        max_participants: parseNullableInt(overlay.querySelector("#cp-session-max").value),
+        event_type_id: typeSelect.value || null,
+        default_event_type: defaultTypeName,
+      };
+
+      const { error } = await saveRecord({
+        table: "session_templates",
+        id: session?.id,
+        payload,
+        optionalColumns: ["brand", "event_type_id", "default_event_type"],
+      });
+
+      if (error) {
+        showToast(`Opslaan mislukt: ${error.message}`, "error");
+        return false;
+      }
+
+      showToast("Sessietemplate opgeslagen.", "success");
+      await loadSection("sessies");
+      return true;
+    },
+  });
+}
+
+async function renderGebruikersSection(container) {
+  const dashboardUrl = getSupabaseUsersDashboardUrl();
+  const { data: profiles, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Gebruikers & rollen",
+      description:
+        "Admin beheert rollen en merktoewijzing. Uitnodigingen verlopen via Supabase Invite flow voor security en compliance.",
+    })}
+
+    <div class="cp-grid cp-grid-2">
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>Nieuwe gebruiker uitnodigen</h3>
+            <p>Gebruik Supabase Authentication invite. Deze app stuurt je naar de juiste pagina.</p>
+          </div>
+          <button class="cp-btn cp-btn-ghost" id="cp-open-supabase-users" type="button">Open Supabase Users</button>
+        </header>
+
+        <div class="cp-grid cp-grid-3">
+          <label class="cp-field cp-col-span-2">
+            <span>E-mail</span>
+            <input id="cp-invite-email" type="email" placeholder="naam@bedrijf.com" />
+          </label>
+          <label class="cp-field">
+            <span>Rol</span>
+            <select id="cp-invite-role">
+              <option value="admin">admin</option>
+              <option value="ops" selected>ops</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <label class="cp-field">
+            <span>Merk</span>
+            <select id="cp-invite-brand">
+              ${renderBrandOptions(state.currentBrand)}
+            </select>
+          </label>
+          <div class="cp-field cp-col-span-2">
+            <span>Workflow</span>
+            <p class="cp-hint">1) Vul gegevens in 2) klik op voorbereiden 3) plak in interne SOP of invite ticket.</p>
+          </div>
+        </div>
+
+        <div class="cp-row-actions cp-row-actions-end">
+          <button class="cp-btn cp-btn-primary" id="cp-prepare-invite" type="button">Invite voorbereiden</button>
+        </div>
+      </article>
+
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>Rollenmodel</h3>
+            <p>Duidelijke rechten per teamtype.</p>
+          </div>
+        </header>
+
+        <div class="cp-role-grid">
+          <div><strong>admin</strong><small>Volledige toegang tot alle settings en operationele modules.</small></div>
+          <div><strong>ops</strong><small>Events, deelnemers, check-in en export beheren.</small></div>
+          <div><strong>viewer</strong><small>Read-only toegang voor stakeholders en management.</small></div>
+        </div>
+      </article>
+    </div>
+
+    ${profiles?.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table">
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>E-mail</th>
+              <th>Rol</th>
+              <th>Merk</th>
+              <th>Aangemaakt</th>
+              <th>Laatst actief</th>
+              <th>Status</th>
+              <th class="cp-ta-right">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${profiles
+              .map((profile) => {
+                const lastSeen = profile.last_sign_in_at || profile.last_seen_at || profile.updated_at || "";
+                const isActive = profile.is_active !== false;
+                return `
+                  <tr>
+                    <td>
+                      <strong>${esc(profile.full_name || "-")}</strong>
+                      <small>${esc(profile.id || "")}</small>
+                    </td>
+                    <td>${esc(profile.email || "-")}</td>
+                    <td>
+                      <select class="cp-inline-select" data-field="role" data-id="${profile.id}">
+                        <option value="admin" ${profile.role === "admin" ? "selected" : ""}>admin</option>
+                        <option value="ops" ${profile.role === "ops" ? "selected" : ""}>ops</option>
+                        <option value="viewer" ${profile.role === "viewer" ? "selected" : ""}>viewer</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select class="cp-inline-select" data-field="brand_id" data-id="${profile.id}">
+                        ${renderBrandOptions(profile.brand_id || "academy")}
+                      </select>
+                    </td>
+                    <td>${formatDateCell(profile.created_at)}</td>
+                    <td>${formatDateCell(lastSeen)}</td>
+                    <td>${renderStatusBadge(isActive)}</td>
+                    <td class="cp-ta-right">
+                      <div class="cp-row-actions cp-row-actions-end">
+                        <label class="cp-inline-toggle">
+                          <input type="checkbox" data-field="is_active" data-id="${profile.id}" ${isActive ? "checked" : ""} />
+                          <span>Actief</span>
+                        </label>
+                        <button class="cp-btn-link" data-action="save-profile" data-id="${profile.id}" type="button">Opslaan</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : renderEmptyState("Geen gebruikers", "Profiles tabel bevat nog geen records.")}
+  `;
+
+  container.querySelector("#cp-open-supabase-users").onclick = () => {
+    window.open(dashboardUrl, "_blank", "noopener,noreferrer");
+  };
+
+  container.querySelector("#cp-prepare-invite").onclick = async () => {
+    const email = container.querySelector("#cp-invite-email").value.trim();
+    const role = container.querySelector("#cp-invite-role").value;
+    const brand = container.querySelector("#cp-invite-brand").value;
+
+    if (!email) {
+      showToast("Vul een e-mailadres in.", "error");
+      return;
+    }
+
+    const instruction = [
+      "Supabase Invite voorbereiding",
+      `Email: ${email}`,
+      `Rol: ${role}`,
+      `Merk: ${brand}`,
+      `Open: ${dashboardUrl}`,
+      "Stap: Authentication > Users > Invite user",
+    ].join("\n");
+
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(instruction).catch(() => null);
+    }
+
+    showToast("Invite instructie voorbereid en dashboard-link geopend.", "success");
+    window.open(dashboardUrl, "_blank", "noopener,noreferrer");
+  };
+
+  container.querySelectorAll("[data-action='save-profile']").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const roleEl = container.querySelector(`select[data-field='role'][data-id='${id}']`);
+      const brandEl = container.querySelector(`select[data-field='brand_id'][data-id='${id}']`);
+      const activeEl = container.querySelector(`input[data-field='is_active'][data-id='${id}']`);
+
+      const payload = {
+        role: roleEl?.value,
+        brand_id: brandEl?.value,
+        is_active: !!activeEl?.checked,
+      };
+
+      const { error } = await saveRecord({
+        table: "profiles",
+        id,
+        payload,
+        optionalColumns: ["is_active", "brand_id"],
+      });
+
+      if (error) {
+        showToast(`Gebruiker opslaan mislukt: ${error.message}`, "error");
+        return;
+      }
+
+      showToast("Gebruiker bijgewerkt.", "success");
+      await loadSection("gebruikers");
+    };
+  });
+}
+
+async function renderNotificatiesSection(container) {
+  const templates = await fetchRows("notification_templates", { brandScoped: true, orderBy: "trigger_type" });
+  const templateByTrigger = Object.fromEntries((templates || []).map((template) => [template.trigger_type, template]));
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Notificaties & e-mailtemplates",
+      description:
+        "Stuur consistente communicatie over uitnodiging, RSVP, reminders en follow-up. Variabelen: {{naam}}, {{event}}, {{datum}}, {{locatie}}.",
+      actions: `<button class="cp-btn cp-btn-primary" id="cp-save-all-templates" type="button">Alles opslaan</button>`,
+      sideInfo: `Merkcontext: <strong>${esc(getBrandLabel(state.currentBrand))}</strong>`,
+    })}
+
+    <div class="cp-stack">
+      ${NOTIFICATION_TRIGGERS.map((trigger) => {
+        const template = templateByTrigger[trigger.key];
+        return `
+          <article class="cp-card" data-trigger="${trigger.key}">
+            <header class="cp-card-head">
+              <div>
+                <h3>${esc(trigger.label)}</h3>
+                <p>Trigger key: <code>${esc(trigger.key)}</code></p>
+              </div>
+              <label class="cp-inline-toggle">
+                <input type="checkbox" data-field="is_active" ${template?.is_active ? "checked" : ""} />
+                <span>Aan</span>
+              </label>
+            </header>
+
+            <div class="cp-grid cp-grid-2">
+              <label class="cp-field cp-col-span-2">
+                <span>Onderwerpregel</span>
+                <input type="text" data-field="subject" value="${esc(template?.subject || "")}" placeholder="Onderwerp van de mail" />
+              </label>
+              <label class="cp-field cp-col-span-2">
+                <span>Template tekst (plain text)</span>
+                <textarea data-field="body" rows="5" placeholder="Beste {{naam}}, ...">${esc(template?.body || "")}</textarea>
+              </label>
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+
+  container.querySelector("#cp-save-all-templates").onclick = async () => {
+    for (const trigger of NOTIFICATION_TRIGGERS) {
+      const card = container.querySelector(`[data-trigger='${trigger.key}']`);
+      const existing = templateByTrigger[trigger.key];
+
+      const payload = {
+        brand: state.currentBrand,
+        trigger_type: trigger.key,
+        is_active: !!card.querySelector("[data-field='is_active']")?.checked,
+        subject: card.querySelector("[data-field='subject']")?.value?.trim() || "",
+        body: card.querySelector("[data-field='body']")?.value || "",
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await saveRecord({
+        table: "notification_templates",
+        id: existing?.id,
+        payload,
+        optionalColumns: ["brand"],
+      });
+
+      if (error) {
+        showToast(`Template ${trigger.label} kon niet worden opgeslagen: ${error.message}`, "error");
+        return;
+      }
+    }
+
+    showToast("Alle notificatietemplates zijn opgeslagen.", "success");
+    await loadSection("notificaties");
+  };
+}
+
+async function renderCateringSection(container) {
+  const [options, eventTypes] = await Promise.all([
+    fetchRows("catering_options", { brandScoped: true, orderBy: "name" }),
+    fetchRows("event_types", { brandScoped: true, orderBy: "name" }).catch(() => []),
+  ]);
+
+  const eventTypeById = Object.fromEntries((eventTypes || []).map((eventType) => [eventType.id, eventType]));
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Catering opties",
+      description:
+        "Centrale cateringcatalogus voor events. Definieer welke opties passen bij specifieke eventtypes.",
+      actions: `<button class="cp-btn cp-btn-primary" id="cp-add-catering" type="button">+ Optie toevoegen</button>`,
+    })}
+
+    ${options.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table">
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>Beschrijving</th>
+              <th>Geschikt voor event type</th>
+              <th>Status</th>
+              <th class="cp-ta-right">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${options
+              .map((option) => {
+                const eventTypeLabel =
+                  option.event_type ||
+                  option.default_event_type ||
+                  eventTypeById[option.event_type_id]?.name ||
+                  "-";
+                return `
+                  <tr>
+                    <td><strong>${esc(option.name || "-")}</strong></td>
+                    <td>${esc(option.description || "-")}</td>
+                    <td>${esc(eventTypeLabel)}</td>
+                    <td>${renderStatusBadge(option.is_active !== false)}</td>
+                    <td class="cp-ta-right">
+                      <div class="cp-row-actions cp-row-actions-end">
+                        <button class="cp-btn-link" data-action="edit-catering" data-id="${option.id}" type="button">Bewerken</button>
+                        <button class="cp-btn-link" data-action="toggle-catering" data-id="${option.id}" data-active="${String(
+                          option.is_active !== false
+                        )}" type="button">${option.is_active !== false ? "Deactiveren" : "Activeren"}</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : renderEmptyState("Geen cateringopties", "Voeg catering opties toe zodat planners sneller kunnen kiezen.")}
+  `;
+
+  container.querySelector("#cp-add-catering").onclick = () => openCateringModal(null, eventTypes);
+
+  container.querySelectorAll("[data-action='edit-catering']").forEach((btn) => {
+    btn.onclick = () => {
+      const option = options.find((entry) => String(entry.id) === String(btn.dataset.id));
+      if (option) openCateringModal(option, eventTypes);
+    };
+  });
+
+  container.querySelectorAll("[data-action='toggle-catering']").forEach((btn) => {
+    btn.onclick = async () => {
+      const isActive = btn.dataset.active === "true";
+      const { error } = await saveRecord({
+        table: "catering_options",
+        id: btn.dataset.id,
+        payload: { is_active: !isActive },
+        optionalColumns: ["is_active"],
+      });
+
+      if (error) {
+        showToast(`Statusupdate mislukt: ${error.message}`, "error");
+        return;
+      }
+
+      showToast("Cateringstatus bijgewerkt.", "success");
+      await loadSection("catering");
+    };
+  });
+}
+
+function openCateringModal(option, eventTypes = []) {
+  const isEdit = !!option;
+
+  openModal({
+    title: isEdit ? "Catering optie bewerken" : "Nieuwe catering optie",
+    description: "Gebruik vaste opties voor consistente hospitality service levels.",
+    saveLabel: isEdit ? "Opslaan" : "Aanmaken",
+    body: `
+      <div class="cp-grid cp-grid-2">
+        <label class="cp-field cp-col-span-2">
+          <span>Naam</span>
+          <input id="cp-catering-name" type="text" value="${esc(option?.name || "")}" placeholder="Drank + lunch" />
+        </label>
+
+        <label class="cp-field cp-col-span-2">
+          <span>Beschrijving</span>
+          <textarea id="cp-catering-description" rows="3" placeholder="Inhoud van dit cateringpakket">${esc(
+            option?.description || ""
+          )}</textarea>
+        </label>
+
+        <label class="cp-field">
+          <span>Geschikt event type</span>
+          <select id="cp-catering-event-type">
+            <option value="">Geen specifiek event type</option>
+            ${eventTypes
+              .map((eventType) => {
+                const selected =
+                  String(option?.event_type_id || "") === String(eventType.id) ||
+                  String(option?.event_type || "") === String(eventType.name || "");
+                return `<option value="${esc(eventType.id)}" data-name="${esc(eventType.name || "")}" ${
+                  selected ? "selected" : ""
+                }>${esc(eventType.name || "-")}</option>`;
+              })
+              .join("")}
+          </select>
+        </label>
+
+        <label class="cp-field">
+          <span>Fallback event type naam</span>
+          <input id="cp-catering-event-type-name" type="text" value="${esc(
+            option?.event_type || option?.default_event_type || ""
+          )}" placeholder="Masterclass" />
+        </label>
+
+        <label class="cp-field cp-toggle-field cp-col-span-2">
+          <span>Actief</span>
+          <input id="cp-catering-active" type="checkbox" ${option?.is_active !== false ? "checked" : ""} />
+        </label>
+      </div>
+    `,
+    onSave: async (overlay) => {
+      const name = overlay.querySelector("#cp-catering-name").value.trim();
+      if (!name) {
+        showToast("Naam is verplicht.", "error");
+        return false;
+      }
+
+      const eventTypeSelect = overlay.querySelector("#cp-catering-event-type");
+      const selectedOption = eventTypeSelect.options[eventTypeSelect.selectedIndex];
+
+      const payload = {
+        brand: state.currentBrand,
+        name,
+        description: overlay.querySelector("#cp-catering-description").value.trim(),
+        event_type_id: eventTypeSelect.value || null,
+        event_type:
+          overlay.querySelector("#cp-catering-event-type-name").value.trim() || selectedOption?.dataset?.name || "",
+        is_active: overlay.querySelector("#cp-catering-active").checked,
+      };
+
+      const { error } = await saveRecord({
+        table: "catering_options",
+        id: option?.id,
+        payload,
+        optionalColumns: ["brand", "event_type_id", "event_type", "is_active"],
+      });
+
+      if (error) {
+        showToast(`Opslaan mislukt: ${error.message}`, "error");
+        return false;
+      }
+
+      showToast("Catering optie opgeslagen.", "success");
+      await loadSection("catering");
+      return true;
+    },
+  });
+}
+
+async function renderExportSection(container) {
+  const brand = state.currentBrand;
+  const { data: settingsRows, error } = await supabase.from("app_settings").select("*").eq("brand", brand);
+  if (error) throw error;
+
+  const defaultFields = EXPORT_FIELDS;
+  const selectedFields = splitCsv(getSetting(settingsRows, brand, "export_fields", defaultFields.join(",")));
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Export & integraties",
+      description:
+        "Bepaal CSV standaarden, datumformaten, bestandsnamen en voorbereide integratieparameters voor externe tools.",
+      sideInfo: `Merkcontext: <strong>${esc(getBrandLabel(brand))}</strong>`,
+    })}
+
+    <div class="cp-grid cp-grid-2">
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>CSV Export instellingen</h3>
+            <p>Stel defaults in voor operations en rapportering.</p>
+          </div>
+        </header>
+
+        <div class="cp-field">
+          <span>Standaard velden</span>
+          <div class="cp-chip-check-wrap">
+            ${EXPORT_FIELDS.map(
+              (field) => `
+              <label class="cp-chip-check">
+                <input type="checkbox" class="cp-export-field" value="${field}" ${selectedFields.includes(field) ? "checked" : ""} />
+                <span>${field}</span>
+              </label>
+            `
+            ).join("")}
+          </div>
+        </div>
+
+        <div class="cp-grid cp-grid-2">
+          <label class="cp-field">
+            <span>Datumformaat</span>
+            <select id="cp-export-date-format">
+              <option value="DD/MM/YYYY" ${getSetting(settingsRows, brand, "export_dateformat", "DD/MM/YYYY") === "DD/MM/YYYY" ? "selected" : ""}>DD/MM/YYYY</option>
+              <option value="ISO" ${getSetting(settingsRows, brand, "export_dateformat", "DD/MM/YYYY") === "ISO" ? "selected" : ""}>ISO</option>
+            </select>
+          </label>
+
+          <label class="cp-field">
+            <span>Bestandsnaam patroon</span>
+            <input id="cp-export-filename" type="text" value="${esc(
+              getSetting(settingsRows, brand, "export_filename", "archer_events_{{datum}}.csv")
+            )}" />
+          </label>
+        </div>
+
+        <div class="cp-row-actions cp-row-actions-end">
+          <button class="cp-btn cp-btn-primary" id="cp-save-export" type="button">Export opslaan</button>
+        </div>
+      </article>
+
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>Integraties</h3>
+            <p>Infra voorbereiden voor webhooks, API keys en storage.</p>
+          </div>
+        </header>
+
+        <label class="cp-field">
+          <span>Webhook URL</span>
+          <input id="cp-int-webhook" type="url" value="${esc(getSetting(settingsRows, brand, "webhook_url", ""))}" placeholder="https://hooks.example.com/..." />
+        </label>
+
+        <label class="cp-field">
+          <span>Read-only API key</span>
+          <div class="cp-inline-input-row">
+            <input id="cp-int-api-key" type="text" value="${esc(getSetting(settingsRows, brand, "api_key", ""))}" readonly />
+            <button class="cp-btn cp-btn-ghost" id="cp-generate-api-key" type="button">Genereren</button>
+          </div>
+        </label>
+
+        <label class="cp-field">
+          <span>Supabase Storage bucket</span>
+          <input id="cp-int-storage-bucket" type="text" value="${esc(
+            getSetting(settingsRows, brand, "storage_bucket", "event-assets")
+          )}" placeholder="event-assets" />
+        </label>
+
+        <div class="cp-row-actions cp-row-actions-end">
+          <button class="cp-btn cp-btn-primary" id="cp-save-integrations" type="button">Integraties opslaan</button>
+        </div>
+      </article>
+    </div>
+  `;
+
+  container.querySelector("#cp-generate-api-key").onclick = () => {
+    const generated = `ak_${createUuidLike().replace(/-/g, "")}`;
+    container.querySelector("#cp-int-api-key").value = generated;
+  };
+
+  container.querySelector("#cp-save-export").onclick = async () => {
+    const fields = [...container.querySelectorAll(".cp-export-field:checked")].map((checkbox) => checkbox.value);
+
+    const error = await upsertSettings(brand, [
+      ["export_fields", fields.join(",")],
+      ["export_dateformat", container.querySelector("#cp-export-date-format").value],
+      ["export_filename", container.querySelector("#cp-export-filename").value.trim()],
+    ]);
+
+    if (error) {
+      showToast(`Exportsettings konden niet opgeslagen worden: ${error.message}`, "error");
+      return;
+    }
+
+    showToast("Exportinstellingen opgeslagen.", "success");
+  };
+
+  container.querySelector("#cp-save-integrations").onclick = async () => {
+    const error = await upsertSettings(brand, [
+      ["webhook_url", container.querySelector("#cp-int-webhook").value.trim()],
+      ["api_key", container.querySelector("#cp-int-api-key").value.trim()],
+      ["storage_bucket", container.querySelector("#cp-int-storage-bucket").value.trim()],
+    ]);
+
+    if (error) {
+      showToast(`Integraties konden niet opgeslagen worden: ${error.message}`, "error");
+      return;
+    }
+
+    showToast("Integratie-instellingen opgeslagen.", "success");
+  };
+}
+
+async function renderAuditLogSection(container) {
+  const logs = await fetchRows("audit_log", { orderBy: "created_at", ascending: false, limit: 200 });
+
+  container.innerHTML = `
+    ${renderSectionHeader({
+      title: "Audit log",
+      description:
+        "Overzicht van kritieke acties: wie deed wat, wanneer en op welke entiteit. Handig voor compliance en incidentanalyse.",
+      actions: `<input id="cp-audit-search" class="cp-search" type="search" placeholder="Zoek op gebruiker, actie of entiteit" />`,
+    })}
+
+    ${logs.length
+      ? `
+      <div class="cp-table-card">
+        <table class="cp-table cp-table-compact" id="cp-audit-table">
+          <thead>
+            <tr>
+              <th>Tijdstip</th>
+              <th>Gebruiker</th>
+              <th>Actie</th>
+              <th>Entiteit</th>
+              <th>Record</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs
+              .map((log) => {
+                const actor = log.actor_name || log.actor_email || log.user_email || log.actor_id || "-";
+                const action = log.action || log.event || "-";
+                const entity = log.table_name || log.entity || "-";
+                const record = log.record_id || log.entity_id || "-";
+                const detail = extractAuditDetail(log);
+
+                return `
+                  <tr>
+                    <td>${formatDateCell(log.created_at)}</td>
+                    <td>${esc(actor)}</td>
+                    <td><span class="cp-audit-action">${esc(action)}</span></td>
+                    <td>${esc(entity)}</td>
+                    <td><code>${esc(String(record).slice(0, 16))}</code></td>
+                    <td>${esc(detail)}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : renderEmptyState("Geen audit records", "Audit log tabel bevat nog geen acties.")}
+  `;
+
+  const searchInput = container.querySelector("#cp-audit-search");
+  const rows = [...container.querySelectorAll("#cp-audit-table tbody tr")];
+
+  if (searchInput && rows.length) {
+    searchInput.oninput = () => {
+      const query = searchInput.value.trim().toLowerCase();
+      rows.forEach((row) => {
+        const visible = !query || row.textContent.toLowerCase().includes(query);
+        row.style.display = visible ? "" : "none";
+      });
+    };
+  }
+}
+
+function renderSectionHeader({ title, description, actions = "", sideInfo = "" }) {
+  return `
+    <div class="cp-section-head">
+      <div class="cp-section-head-main">
+        <h2>${esc(title)}</h2>
+        <p>${description}</p>
+      </div>
+      <div class="cp-section-head-actions">
+        ${sideInfo ? `<div class="cp-side-info">${sideInfo}</div>` : ""}
+        ${actions || ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderLoading(text) {
+  return `<div class="cp-feedback cp-feedback-loading">${esc(text)}</div>`;
+}
+
+function renderError(message) {
+  return `<div class="cp-feedback cp-feedback-error">Fout bij laden: ${esc(message || "onbekende fout")}</div>`;
+}
+
+function renderEmptyState(title, description) {
+  return `
+    <div class="cp-empty-state">
+      <strong>${esc(title)}</strong>
+      <p>${esc(description)}</p>
+    </div>
+  `;
+}
+
+function renderStatusBadge(isActive) {
+  return `<span class="cp-status ${isActive ? "active" : "inactive"}">${isActive ? "Actief" : "Inactief"}</span>`;
+}
+
+function renderTagList(values, maxCount = 3) {
+  const list = ensureArray(values);
+  if (!list.length) return "-";
+
+  const visible = list.slice(0, maxCount).map((value) => `<span class="cp-tag">${esc(value)}</span>`).join("");
+  const overflow = list.length > maxCount ? `<span class="cp-tag">+${list.length - maxCount}</span>` : "";
+
+  return `<span class="cp-tag-group">${visible}${overflow}</span>`;
+}
+
+function renderBrandOptions(selectedBrandId = state.currentBrand) {
+  return BRANDS.map(
+    (brand) => `<option value="${brand.id}" ${brand.id === selectedBrandId ? "selected" : ""}>${esc(brand.label)}</option>`
+  ).join("");
+}
+
+function getBrandLabel(brandId) {
+  return BRANDS.find((brand) => brand.id === brandId)?.label || brandId || "Onbekend merk";
+}
+
+function getSetting(settingsRows, brandId, key, fallback = "") {
+  const entry = settingsRows?.find((row) => row.brand === brandId && row.key === key);
+  return entry?.value ?? fallback;
+}
+
+function readInputValue(parent, fieldName) {
+  const element = parent.querySelector(`[data-field='${fieldName}']`);
+  return element?.value?.trim?.() ?? "";
+}
+
+function parseNullableInt(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function ensureArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") return value.split(",").map((part) => part.trim()).filter(Boolean);
+  return [];
+}
+
+function splitCsv(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return String(value)
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatDateCell(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return esc(String(value));
+  return date.toLocaleString("nl-BE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function extractAuditDetail(log) {
+  if (!log) return "-";
+
+  if (typeof log.description === "string" && log.description.trim()) return log.description.trim();
+  if (typeof log.details === "string" && log.details.trim()) return log.details.trim();
+
+  const metadata = log.metadata || log.payload || log.changes || null;
+  if (metadata && typeof metadata === "object") {
+    const compact = Object.entries(metadata)
+      .slice(0, 3)
+      .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+      .join(" | ");
+    return compact || "-";
+  }
+
+  return "-";
+}
+
+function getSupabaseUsersDashboardUrl() {
+  try {
+    const projectRef = new URL(SUPABASE_URL).hostname.split(".")[0];
+    if (!projectRef) return "https://supabase.com/dashboard";
+    return `https://supabase.com/dashboard/project/${projectRef}/auth/users`;
+  } catch {
+    return "https://supabase.com/dashboard";
+  }
+}
+
+function createUuidLike() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function fetchAppSettings(brandIds) {
+  const { data, error } = await supabase.from("app_settings").select("*").in("brand", brandIds);
+  if (error) throw error;
+  return data || [];
+}
+
+async function fetchRows(table, options = {}) {
+  const {
+    columns = "*",
+    brandScoped = false,
+    orderBy = null,
+    ascending = true,
+    limit = null,
+  } = options;
+
+  let query = supabase.from(table).select(columns);
+
+  if (brandScoped) query = query.eq("brand", state.currentBrand);
+  if (orderBy) query = query.order(orderBy, { ascending });
+  if (limit) query = query.limit(limit);
+
+  let { data, error } = await query;
+
+  // Some tables may not have a brand column; fallback to non-scoped query.
+  if (error && brandScoped && errorHasColumn(error, "brand")) {
+    let fallbackQuery = supabase.from(table).select(columns);
+    if (orderBy) fallbackQuery = fallbackQuery.order(orderBy, { ascending });
+    if (limit) fallbackQuery = fallbackQuery.limit(limit);
+    ({ data, error } = await fallbackQuery);
+  }
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function saveRecord({ table, id = null, payload, optionalColumns = [] }) {
+  let workingPayload = { ...payload };
+
+  while (true) {
+    const query = id
+      ? supabase.from(table).update(workingPayload).eq("id", id)
+      : supabase.from(table).insert([workingPayload]);
+
+    const { error } = await query;
+    if (!error) return { error: null };
+
+    const removable = optionalColumns.find(
+      (column) => Object.prototype.hasOwnProperty.call(workingPayload, column) && errorHasColumn(error, column)
+    );
+
+    if (!removable) return { error };
+    delete workingPayload[removable];
+  }
+}
+
+async function upsertSettings(brandId, keyValuePairs) {
+  for (const [key, value] of keyValuePairs) {
+    const { error } = await supabase
+      .from("app_settings")
+      .upsert({ brand: brandId, key, value: value ?? "" }, { onConflict: "brand,key" });
+
+    if (error) return error;
+  }
+
+  return null;
+}
+
+function errorHasColumn(error, columnName) {
+  const haystack = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`.toLowerCase();
+  return haystack.includes("column") && haystack.includes(String(columnName).toLowerCase());
+}
+
+function openModal({ title, description = "", body, saveLabel = "Opslaan", onSave }) {
+  const overlay = document.createElement("div");
+  overlay.className = "cp-modal-overlay";
+
+  overlay.innerHTML = `
+    <div class="cp-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <header class="cp-modal-head">
+        <div>
+          <h3>${esc(title)}</h3>
+          ${description ? `<p>${esc(description)}</p>` : ""}
+        </div>
+        <button class="cp-modal-close" data-action="close-modal" type="button">✕</button>
+      </header>
+      <div class="cp-modal-body">${body}</div>
+      <footer class="cp-modal-foot">
+        <button class="cp-btn cp-btn-ghost" data-action="close-modal" type="button">Annuleren</button>
+        <button class="cp-btn cp-btn-primary" data-action="save-modal" type="button">${esc(saveLabel)}</button>
+      </footer>
+    </div>
+  `;
+
+  const close = () => {
+    overlay.remove();
+  };
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+
+  overlay.querySelectorAll("[data-action='close-modal']").forEach((btn) => {
+    btn.onclick = close;
+  });
+
+  const saveButton = overlay.querySelector("[data-action='save-modal']");
+  saveButton.onclick = async () => {
+    saveButton.disabled = true;
+    saveButton.textContent = "Opslaan...";
+
+    try {
+      const shouldClose = await onSave(overlay);
+      if (shouldClose !== false) close();
+    } catch (error) {
+      showToast(`Opslaan mislukt: ${error.message || "onbekende fout"}`, "error");
+    } finally {
+      if (document.body.contains(overlay)) {
+        saveButton.disabled = false;
+        saveButton.textContent = saveLabel;
+      }
+    }
+  };
+
+  document.body.appendChild(overlay);
+  return overlay;
 }
