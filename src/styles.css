@@ -335,6 +335,46 @@ h1 {
   z-index: 10;
 }
 
+.event-modal-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.event-modal-brand img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(77, 115, 255, 0.5));
+}
+
+.event-modal-brand h3 {
+  margin: 0;
+}
+
+.event-modal-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.event-modal .modal-header {
+  background: linear-gradient(180deg, #f4f8ff 0%, #ffffff 100%);
+  position: sticky;
+  overflow: hidden;
+}
+
+.event-modal .modal-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #010310 0%, #4d73ff 50%, #010310 100%);
+}
+
 .modal-body {
   padding: 32px;
   flex: 1;

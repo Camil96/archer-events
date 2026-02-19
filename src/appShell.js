@@ -19,6 +19,29 @@ let activePage = 'Dashboard';
 let rootEl;
 let filters = { brand: '', search: '', period: '' };
 
+const DEFAULT_EVENT_TITLE_PRESETS = [
+  'Performance sessie',
+  'Kick-off',
+  'Masterclass',
+  'Netwerkevent',
+  'Workshop',
+  '1-op-1 Sessie',
+  'Review sessie'
+];
+
+const DEFAULT_PHYSICAL_LOCATION_PRESETS = [
+  'Aula Archer',
+  'Seneca',
+  'Kantoor Archer'
+];
+
+const DEFAULT_ONLINE_LOCATION_PRESETS = [
+  { label: 'Zoom meeting', location: 'Online - Zoom', url: 'https://zoom.us/j/' },
+  { label: 'Microsoft Teams', location: 'Online - Teams', url: 'https://teams.microsoft.com/l/meetup-join/' },
+  { label: 'Google Meet', location: 'Online - Google Meet', url: 'https://meet.google.com/' },
+  { label: 'Webex', location: 'Online - Webex', url: 'https://webex.com/meet/' }
+];
+
 // ─── APP SHELL ───────────────────────────────────────────────
 export function renderAppShell(root, session) {
   rootEl = root;
@@ -239,7 +262,17 @@ function renderEventList(container, events) {
 // ─── MODAL ───────────────────────────────────────────────────
 async function openModal(event) {
   const isEdit = !!event;
-  const availableUsers = await listAvailableUsers().catch(() => []);
+  const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
+  const settingsBrand = normalizeBrandForSettings(initialBrand);
+
+  const [availableUsers, titleRows, locationRows, settingsRows] = await Promise.all([
+    listAvailableUsers().catch(() => []),
+    fetchEventTitleRows(),
+    fetchEventLocationRows(),
+    fetchEventModalSettings(settingsBrand),
+  ]);
+
+  const frequentTitles = getFrequentEventTitles(titleRows);
   const userMap = Object.fromEntries(availableUsers.map(u => [u.id, u.full_name || u.email]));
 
   const overlay = document.createElement('div');
@@ -247,11 +280,23 @@ async function openModal(event) {
 
   const brands = ['Academy', 'Invest', 'Fund'];
   const brandOptions = brands.map(b => `<option value="${b}" ${(event?.brand || 'Academy') === b ? 'selected' : ''}>${b}</option>`).join('');
+  const initialLocationType = inferLocationType(event?.location, event?.location_url);
+  const locationTypeOptions = [
+    { value: 'physical', label: 'Fysiek' },
+    { value: 'online', label: 'Online' },
+    { value: 'hybrid', label: 'Hybride' },
+  ];
 
   overlay.innerHTML = `
-    <div class="modal modal-large">
+    <div class="modal modal-large event-modal">
       <div class="modal-header">
-        <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
+        <div class="event-modal-brand">
+          <img src="/Icon_Blue.png" alt="Archer icon" onerror="this.style.display='none'">
+          <div>
+            <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
+            <p class="event-modal-subtitle">Hospitality event composer</p>
+          </div>
+        </div>
         <button class="btn-ghost" id="m-close">✕</button>
       </div>
       
@@ -266,21 +311,36 @@ async function openModal(event) {
       <div class="modal-body">
         <div id="tab-details">
           <div class="grid-2">
-            <div><label>Evenement titel *</label><input id="m-title" value="${esc(event?.title || '')}"></div>
+            <div>
+              <label>Evenement titel *</label>
+              <input id="m-title" value="${esc(event?.title || '')}">
+            </div>
+            <div>
+              <label>Veelgebruikte titels</label>
+              <select id="m-title-preset"></select>
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top:16px;">
             <div><label>Merk</label><select id="m-brand">${brandOptions}</select></div>
+            <div><label>Locatie type</label><select id="m-loc-type">
+              ${locationTypeOptions.map(opt => `<option value="${opt.value}" ${initialLocationType === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
+            </select></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Start datum & tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
             <div><label>Eind datum & tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Locatie naam</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
+            <div><label>Locatie preset</label><select id="m-loc-preset"></select></div>
             <div><label>Tijdzone</label><select id="m-tz">
               <option value="Europe/Brussels" ${(event?.timezone || 'Europe/Brussels') === 'Europe/Brussels' ? 'selected' : ''}>Europe/Brussels</option>
               <option value="UTC" ${event?.timezone === 'UTC' ? 'selected' : ''}>UTC</option>
             </select></div>
           </div>
-          <div style="margin-top:16px;"><label>Locatie URL (Maps / Online link)</label><input id="m-loc-url" value="${esc(event?.location_url || '')}" placeholder="https://..."></div>
+          <div class="grid-2" style="margin-top:16px;">
+            <div><label>Locatie naam</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
+            <div><label>Locatie URL (Maps / Online link)</label><input id="m-loc-url" value="${esc(event?.location_url || '')}" placeholder="https://..."></div>
+          </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Maximale capaciteit</label><input type="number" id="m-cap" value="${event?.capacity || ''}"></div>
             <div><label>Verwacht aantal gasten</label><input type="number" id="m-exp" value="${event?.expected_attendance || ''}"></div>
@@ -307,6 +367,93 @@ async function openModal(event) {
   const close = () => { document.body.removeChild(overlay); loadContent(); };
   overlay.querySelector('#m-close').onclick = close;
   overlay.querySelector('#m-cancel').onclick = close;
+
+  const titleEl = overlay.querySelector('#m-title');
+  const titlePresetEl = overlay.querySelector('#m-title-preset');
+  const brandEl = overlay.querySelector('#m-brand');
+  const locationTypeEl = overlay.querySelector('#m-loc-type');
+  const locationPresetEl = overlay.querySelector('#m-loc-preset');
+  const locationEl = overlay.querySelector('#m-loc');
+  const locationUrlEl = overlay.querySelector('#m-loc-url');
+  const timezoneEl = overlay.querySelector('#m-tz');
+
+  let modalSettingsRows = settingsRows || [];
+  let activeLocationPresets = [];
+
+  const rebuildTitlePresets = () => {
+    const titlesFromSettings = parseCsvSetting(getModalSettingValue(modalSettingsRows, 'event_title_presets'));
+    const titleOptions = uniqueCaseInsensitive([...DEFAULT_EVENT_TITLE_PRESETS, ...titlesFromSettings, ...frequentTitles]);
+
+    titlePresetEl.innerHTML = `
+      <option value="">Kies veelgebruikte titel</option>
+      ${titleOptions.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+    `;
+
+    const match = titleOptions.find((option) => option.toLowerCase() === String(titleEl.value || '').trim().toLowerCase());
+    if (match) titlePresetEl.value = match;
+  };
+
+  const rebuildLocationPresets = () => {
+    const brandForScope = normalizeBrandForSettings(brandEl.value);
+    const settingsPhysical = parseCsvSetting(getModalSettingValue(modalSettingsRows, 'physical_location_presets'));
+    const settingsOnline = parseOnlineLocationSetting(getModalSettingValue(modalSettingsRows, 'online_location_presets'));
+
+    const physicalPresets = buildPhysicalLocationPresets(locationRows, brandForScope, settingsPhysical);
+    const onlinePresets = buildOnlineLocationPresets(settingsOnline);
+
+    if (locationTypeEl.value === 'online') activeLocationPresets = onlinePresets;
+    else if (locationTypeEl.value === 'hybrid') activeLocationPresets = [...physicalPresets, ...onlinePresets];
+    else activeLocationPresets = physicalPresets;
+
+    locationPresetEl.innerHTML = `
+      <option value="">Kies locatiepreset</option>
+      ${activeLocationPresets.map((preset, idx) => `<option value="${idx}">${esc(preset.label)}</option>`).join('')}
+    `;
+
+    const currentLocation = String(locationEl.value || '').trim().toLowerCase();
+    const matchIdx = activeLocationPresets.findIndex((preset) => String(preset.location || '').trim().toLowerCase() === currentLocation);
+    if (matchIdx >= 0) locationPresetEl.value = String(matchIdx);
+  };
+
+  const syncLocationUi = () => {
+    if (locationTypeEl.value === 'online') {
+      locationUrlEl.placeholder = 'https://zoom.us/j/...';
+      if (!locationEl.value.trim()) locationEl.value = 'Online meeting';
+      if (timezoneEl.value === 'UTC') timezoneEl.value = 'Europe/Brussels';
+    } else if (locationTypeEl.value === 'physical') {
+      locationUrlEl.placeholder = 'https://maps.google.com/...';
+    } else {
+      locationUrlEl.placeholder = 'https://...';
+    }
+  };
+
+  rebuildTitlePresets();
+  rebuildLocationPresets();
+  syncLocationUi();
+
+  titlePresetEl.onchange = () => {
+    if (titlePresetEl.value) titleEl.value = titlePresetEl.value;
+  };
+
+  locationTypeEl.onchange = () => {
+    rebuildLocationPresets();
+    syncLocationUi();
+  };
+
+  locationPresetEl.onchange = () => {
+    const idx = parseInt(locationPresetEl.value, 10);
+    if (Number.isNaN(idx)) return;
+    const preset = activeLocationPresets[idx];
+    if (!preset) return;
+    locationEl.value = preset.location || preset.label || '';
+    if (preset.url && !locationUrlEl.value.trim()) locationUrlEl.value = preset.url;
+  };
+
+  brandEl.onchange = async () => {
+    modalSettingsRows = await fetchEventModalSettings(normalizeBrandForSettings(brandEl.value));
+    rebuildTitlePresets();
+    rebuildLocationPresets();
+  };
 
   overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
     overlay.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -338,6 +485,9 @@ async function openModal(event) {
       notes_internal: overlay.querySelector('#m-notes').value,
     };
     if (!payload.title) return alert('Titel is verplicht');
+    if (overlay.querySelector('#m-loc-type').value === 'online' && !String(payload.location_url || '').trim()) {
+      return alert('Voor online events is een online link verplicht.');
+    }
     try {
       if (isEdit) await updateEvent(event.id, payload);
       else await createEvent(payload);
@@ -353,6 +503,222 @@ async function openModal(event) {
       }
     };
   }
+}
+
+async function fetchEventTitleRows() {
+  const fallback = [];
+
+  try {
+    let { data, error } = await supabase
+      .from('events')
+      .select('title')
+      .is('deleted_at', null)
+      .order('start_at', { ascending: false })
+      .limit(600);
+
+    if (error && errorHasColumn(error, 'deleted_at')) {
+      ({ data, error } = await supabase
+        .from('events')
+        .select('title')
+        .order('start_at', { ascending: false })
+        .limit(600));
+    }
+
+    if (error && errorHasColumn(error, 'start_at')) {
+      ({ data, error } = await supabase.from('events').select('title').limit(600));
+    }
+
+    if (error) return fallback;
+    return data || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function fetchEventLocationRows() {
+  const fallback = [];
+
+  try {
+    let { data, error } = await supabase
+      .from('locations')
+      .select('name,city,is_active,brand')
+      .order('name');
+
+    if (error && errorHasColumn(error, 'brand')) {
+      ({ data, error } = await supabase
+        .from('locations')
+        .select('name,city,is_active')
+        .order('name'));
+    }
+
+    if (error && errorHasColumn(error, 'is_active')) {
+      ({ data, error } = await supabase
+        .from('locations')
+        .select('name,city')
+        .order('name'));
+    }
+
+    if (error) return fallback;
+    return data || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function fetchEventModalSettings(brandId) {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('key,value')
+      .eq('brand', brandId)
+      .in('key', ['event_title_presets', 'physical_location_presets', 'online_location_presets']);
+
+    if (error) return [];
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+function getModalSettingValue(settingsRows, key) {
+  return settingsRows?.find((row) => row.key === key)?.value || '';
+}
+
+function getFrequentEventTitles(rows, limit = 12) {
+  const counter = new Map();
+
+  (rows || []).forEach((row) => {
+    const title = String(row?.title || '').trim();
+    if (!title) return;
+    counter.set(title, (counter.get(title) || 0) + 1);
+  });
+
+  return [...counter.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'nl'))
+    .slice(0, limit)
+    .map(([title]) => title);
+}
+
+function normalizeBrandForSettings(brand) {
+  const normalized = String(brand || '').trim().toLowerCase();
+  if (normalized.includes('academy')) return 'academy';
+  if (normalized.includes('invest')) return 'invest';
+  if (normalized.includes('fund')) return 'fund';
+  return 'academy';
+}
+
+function parseCsvSetting(value) {
+  return String(value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseOnlineLocationSetting(value) {
+  const rows = String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return rows.map((line) => {
+    const [label, location, url] = line.split('|').map((part) => part?.trim() || '');
+    const loc = location || label;
+    return {
+      label: label || loc,
+      location: loc,
+      url: url || '',
+    };
+  });
+}
+
+function uniqueCaseInsensitive(values) {
+  const seen = new Set();
+  const list = [];
+
+  (values || []).forEach((value) => {
+    const clean = String(value || '').trim();
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push(clean);
+  });
+
+  return list;
+}
+
+function uniqueLocationPresets(presets) {
+  const seen = new Set();
+  const list = [];
+
+  (presets || []).forEach((preset) => {
+    const label = String(preset?.label || '').trim();
+    const location = String(preset?.location || '').trim();
+    const url = String(preset?.url || '').trim();
+    if (!label && !location) return;
+
+    const normalizedLabel = (label || location).toLowerCase();
+    const normalizedLocation = (location || label).toLowerCase();
+    const key = `${normalizedLabel}|${normalizedLocation}`;
+
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push({
+      label: label || location,
+      location: location || label,
+      url,
+    });
+  });
+
+  return list;
+}
+
+function buildPhysicalLocationPresets(locationRows, brandForScope, settingsPresets) {
+  const normalizedBrand = normalizeBrandForSettings(brandForScope);
+
+  const fromLocations = (locationRows || [])
+    .filter((row) => row?.is_active !== false)
+    .filter((row) => !row?.brand || normalizeBrandForSettings(row.brand) === normalizedBrand)
+    .map((row) => {
+      const name = String(row?.name || '').trim();
+      const city = String(row?.city || '').trim();
+      return {
+        label: city ? `${name} - ${city}` : name,
+        location: name,
+        url: '',
+      };
+    });
+
+  const fromSettings = (settingsPresets || []).map((name) => ({
+    label: name,
+    location: name,
+    url: '',
+  }));
+
+  const defaults = DEFAULT_PHYSICAL_LOCATION_PRESETS.map((name) => ({
+    label: name,
+    location: name,
+    url: '',
+  }));
+
+  return uniqueLocationPresets([...fromLocations, ...fromSettings, ...defaults]);
+}
+
+function buildOnlineLocationPresets(settingsPresets) {
+  return uniqueLocationPresets([...(settingsPresets || []), ...DEFAULT_ONLINE_LOCATION_PRESETS]);
+}
+
+function inferLocationType(location, locationUrl) {
+  const loc = String(location || '').toLowerCase();
+  const url = String(locationUrl || '').toLowerCase();
+  const onlineSignal = ['zoom', 'teams', 'meet', 'webex', 'online', 'virtual'];
+  const isOnline = onlineSignal.some((signal) => loc.includes(signal) || url.includes(signal));
+  return isOnline ? 'online' : 'physical';
+}
+
+function errorHasColumn(error, columnName) {
+  const haystack = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return haystack.includes('column') && haystack.includes(String(columnName || '').toLowerCase());
 }
 
 // ─── PARTICIPANTS TAB ─────────────────────────────────────────

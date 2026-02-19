@@ -32,6 +32,23 @@ const NOTIFICATION_TRIGGERS = [
   { key: "followup", label: "Follow-up na event" },
 ];
 
+const DEFAULT_EVENT_TITLE_PRESETS = [
+  "Performance sessie",
+  "Kick-off",
+  "Masterclass",
+  "Netwerkevent",
+  "Workshop",
+  "1-op-1 Sessie",
+].join(", ");
+
+const DEFAULT_PHYSICAL_LOCATION_PRESETS = ["Aula Archer", "Seneca", "Kantoor Archer"].join(", ");
+
+const DEFAULT_ONLINE_LOCATION_PRESETS = [
+  "Zoom meeting|Online - Zoom|https://zoom.us/j/",
+  "Microsoft Teams|Online - Teams|https://teams.microsoft.com/l/meetup-join/",
+  "Google Meet|Online - Google Meet|https://meet.google.com/",
+].join("\n");
+
 const EXPORT_FIELDS = [
   "title",
   "location",
@@ -190,6 +207,24 @@ async function renderOrganisatieSection(container) {
   ]);
 
   const locationOptions = (locations || []).filter((location) => location.is_active !== false);
+  const bookingTitlePresets = getSetting(
+    settingsRows,
+    state.currentBrand,
+    "event_title_presets",
+    DEFAULT_EVENT_TITLE_PRESETS
+  );
+  const bookingPhysicalPresets = getSetting(
+    settingsRows,
+    state.currentBrand,
+    "physical_location_presets",
+    DEFAULT_PHYSICAL_LOCATION_PRESETS
+  );
+  const bookingOnlinePresets = getSetting(
+    settingsRows,
+    state.currentBrand,
+    "online_location_presets",
+    DEFAULT_ONLINE_LOCATION_PRESETS
+  );
 
   container.innerHTML = `
     ${renderSectionHeader({
@@ -262,6 +297,39 @@ async function renderOrganisatieSection(container) {
           </article>
         `;
       }).join("")}
+
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>Booking presets (${esc(getBrandLabel(state.currentBrand))})</h3>
+            <p>Deze presets worden gebruikt in het <strong>Nieuw Event</strong> scherm zodat alles centraal gestuurd is.</p>
+          </div>
+          <button class="cp-btn cp-btn-primary" id="cp-save-booking-presets" type="button">Presets opslaan</button>
+        </header>
+
+        <div class="cp-grid cp-grid-2">
+          <label class="cp-field cp-col-span-2">
+            <span>Veelgebruikte evenement titels (comma-separated)</span>
+            <textarea id="cp-event-title-presets" rows="2" placeholder="Performance sessie, Kick-off, Masterclass">${esc(
+              bookingTitlePresets
+            )}</textarea>
+          </label>
+
+          <label class="cp-field cp-col-span-2">
+            <span>Fysieke locatiepresets (comma-separated)</span>
+            <textarea id="cp-physical-location-presets" rows="2" placeholder="Aula Archer, Seneca, Kantoor Archer">${esc(
+              bookingPhysicalPresets
+            )}</textarea>
+          </label>
+
+          <label class="cp-field cp-col-span-2">
+            <span>Online locatiepresets (1 per lijn: label|locatie|url)</span>
+            <textarea id="cp-online-location-presets" rows="4" placeholder="Zoom meeting|Online - Zoom|https://zoom.us/j/">${esc(
+              bookingOnlinePresets
+            )}</textarea>
+          </label>
+        </div>
+      </article>
     </div>
   `;
 
@@ -299,6 +367,22 @@ async function renderOrganisatieSection(container) {
       if (/^#[0-9a-fA-F]{6}$/.test(colorInput.value.trim())) colorPicker.value = colorInput.value.trim();
     };
   });
+
+  container.querySelector("#cp-save-booking-presets").onclick = async () => {
+    const brandId = state.currentBrand;
+    const error = await upsertSettings(brandId, [
+      ["event_title_presets", container.querySelector("#cp-event-title-presets").value.trim()],
+      ["physical_location_presets", container.querySelector("#cp-physical-location-presets").value.trim()],
+      ["online_location_presets", container.querySelector("#cp-online-location-presets").value.trim()],
+    ]);
+
+    if (error) {
+      showToast(`Presets opslaan mislukt: ${error.message}`, "error");
+      return;
+    }
+
+    showToast(`Booking presets opgeslagen voor ${getBrandLabel(brandId)}.`, "success");
+  };
 }
 
 async function renderLocatiesSection(container) {
