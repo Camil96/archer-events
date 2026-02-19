@@ -76,19 +76,19 @@ async function render() {
         </div>
 
         <div class="sidebar-footer">
-          <button id="logout" class="btn-ghost" style="color:var(--danger);width:100%;text-align:left;">↪ Uitloggen</button>
+          <button id="logout" class="btn-ghost logout-btn">↪ Uitloggen</button>
         </div>
       </aside>
 
       <main class="main-content">
         <div class="wrap">
           <div class="header">
-            <div style="display:flex;align-items:center;gap:12px;">
+            <div class="header-title-row">
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
               <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
             </div>
             ${isListView || activePage === 'Calendar' ? `
-              <div style="display:flex;gap:8px;">
+              <div class="header-actions-row">
                 <button id="export-csv" class="btn-secondary">⬇ Export CSV</button>
                 <button id="add-event" class="btn-primary">+ Nieuw event</button>
               </div>` : ''}
