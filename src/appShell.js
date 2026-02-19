@@ -12,6 +12,7 @@ import {
 import { renderCalendar } from "./calendar.js";
 import { renderTimeline } from "./timeline.js";
 import { esc, formatDate, formatDateTime, downloadCSV } from "./utils.js";
+import { renderSettings } from "./views/settings.js";
 
 // ─── GLOBAL STATE ───────────────────────────────────────────
 let activePage = 'Dashboard';
@@ -61,7 +62,7 @@ async function render() {
           <div class="header">
             <div style="display:flex;align-items:center;gap:12px;">
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
-              <h1>${activePage}</h1>
+              <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
             </div>
             ${isListView || activePage === 'Calendar' ? `
               <div style="display:flex;gap:8px;">
@@ -77,7 +78,6 @@ async function render() {
   // Navigation handlers
   rootEl.querySelectorAll('.nav-item').forEach(el => el.onclick = () => {
     activePage = el.dataset.page;
-    // Reset filters when switching main views, but keep brand if on brand page
     filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
     render();
   });
@@ -88,7 +88,7 @@ async function render() {
     window.location.reload();
   };
 
-  // Sidebar toggle for mobile
+  // Sidebar toggle
   rootEl.querySelector('#sidebar-toggle').onclick = () => {
     document.getElementById('sidebar').classList.toggle('sidebar-open');
   };
@@ -97,7 +97,7 @@ async function render() {
   const addBtn = rootEl.querySelector('#add-event');
   if (addBtn) addBtn.onclick = () => openModal(null);
 
-  // Export Events CSV
+  // Export CSV
   const exportBtn = rootEl.querySelector('#export-csv');
   if (exportBtn) exportBtn.onclick = async () => {
     const events = await listEvents(filters);
@@ -114,7 +114,16 @@ async function loadContent() {
 
   try {
     if (activePage === 'Admin') {
-      await renderAdmin(container);
+      // Geef container de id die renderSettings verwacht
+      container.id = 'page-body';
+      // Maak een dummy page-actions aan als die nog niet bestaat
+      if (!document.getElementById('page-actions')) {
+        const pa = document.createElement('div');
+        pa.id = 'page-actions';
+        pa.style.display = 'none';
+        container.parentNode.insertBefore(pa, container);
+      }
+      await renderSettings();
     } else if (activePage === 'Calendar') {
       const events = await listEvents();
       renderCalendar(container, events, (ev) => openModal(ev));
@@ -236,101 +245,6 @@ function renderEventList(container, events) {
   container.appendChild(grid);
 }
 
-// ─── ADMIN / SETTINGS ──────────────────────────────────────────
-async function renderAdmin(container) {
-  const [{ data: { user } }, brands, auditLog] = await Promise.all([
-    supabase.auth.getUser(),
-    listBrands().catch(() => []),
-    listAuditLog(20).catch(() => [])
-  ]);
-
-  container.innerHTML = `
-    <div class="admin-grid">
-      <section class="card">
-        <h3>Mijn profiel</h3>
-        <div style="margin-top:20px;">
-          <label>Email adres</label>
-          <input disabled value="${esc(user?.email || '')}">
-          <label style="margin-top:16px;">User ID</label>
-          <input disabled value="${esc(user?.id || '')}">
-          <div style="margin-top:16px;">
-            <label>Rol</label>
-            <span class="badge badge-green">Beheerder</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <h3>Merken beheer</h3>
-          <button id="add-brand-btn" class="btn-secondary btn-sm">+ Merk</button>
-        </div>
-        <div id="brand-list" style="margin-top:16px;">
-          ${brands.length === 0 ? '<p class="muted">Geen merken geconfigureerd.</p>' : brands.map(b => `
-            <div class="brand-row">
-              <span class="brand-dot" style="background:${esc(b.color || '#ccc')};"></span>
-              <span style="flex:1;font-weight:600;">${esc(b.name)}</span>
-              <span class="badge ${b.active ? 'badge-green' : 'badge-gray'}">${b.active ? 'Actief' : 'Inactief'}</span>
-              <button class="btn-ghost toggle-brand" data-id="${b.id}" data-active="${b.active}">
-                ${b.active ? 'Deactiveer' : 'Activeer'}
-              </button>
-            </div>`).join('')}
-        </div>
-        <div id="brand-form" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
-          <label>Nieuw merknaam</label>
-          <input id="new-brand-name" placeholder="Naam...">
-          <label style="margin-top:12px;">Merk kleur</label>
-          <div style="display:flex;gap:12px;">
-            <input type="color" id="new-brand-color" value="#2563EB" style="width:60px;height:40px;padding:2px;">
-            <button id="save-brand" class="btn-primary" style="flex:1;">Opslaan</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="card" style="grid-column:1/-1;">
-        <h3>Audit Log <span class="muted" style="font-weight:400;font-size:0.9rem;">- Laatste 20 acties</span></h3>
-        <div style="margin-top:20px;overflow-x:auto;">
-          <table class="audit-table">
-            <thead>
-              <tr><th>Datum</th><th>Gebruiker</th><th>Actie</th><th>Entiteit</th></tr>
-            </thead>
-            <tbody>
-              ${auditLog.map(log => `
-                <tr>
-                  <td class="muted">${formatDateTime(log.created_at)}</td>
-                  <td>User ID: ${esc(String(log.actor_user_id || 'System').slice(0, 8))}</td>
-                  <td><code>${esc(log.action)}</code></td>
-                  <td>${esc(log.entity_type)} (${esc(String(log.entity_id || '').slice(0, 8))})</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-          ${auditLog.length === 0 ? '<p class="muted" style="padding:20px;text-align:center;">Geen records gevonden.</p>' : ''}
-        </div>
-      </section>
-    </div>`;
-
-  // Admin handlers
-  container.querySelector('#add-brand-btn').onclick = () => {
-    const form = container.querySelector('#brand-form');
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  };
-
-  container.querySelectorAll('.toggle-brand').forEach(btn => btn.onclick = async () => {
-    const id = btn.dataset.id;
-    const active = btn.dataset.active === 'true';
-    await updateBrand(id, { active: !active });
-    renderAdmin(container);
-  });
-
-  container.querySelector('#save-brand').onclick = async () => {
-    const name = container.querySelector('#new-brand-name').value.trim();
-    const color = container.querySelector('#new-brand-color').value;
-    if (!name) return;
-    await createBrand({ name, color, active: true });
-    renderAdmin(container);
-  };
-}
-
 // ─── MODAL ───────────────────────────────────────────────────
 async function openModal(event) {
   const isEdit = !!event;
@@ -403,7 +317,6 @@ async function openModal(event) {
   overlay.querySelector('#m-close').onclick = close;
   overlay.querySelector('#m-cancel').onclick = close;
 
-  // Modal Tab switching
   overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
     overlay.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active');
@@ -419,7 +332,6 @@ async function openModal(event) {
     if (t.dataset.tab === 'attachments') renderAttachmentsTab(view, event.id);
   });
 
-  // Save event
   overlay.querySelector('#m-save').onclick = async () => {
     const payload = {
       title: overlay.querySelector('#m-title').value.trim(),
@@ -435,7 +347,6 @@ async function openModal(event) {
       notes_internal: overlay.querySelector('#m-notes').value,
     };
     if (!payload.title) return alert('Titel is verplicht');
-
     try {
       if (isEdit) await updateEvent(event.id, payload);
       else await createEvent(payload);
@@ -622,7 +533,6 @@ async function renderTasksTab(container, eventId, availableUsers, userMap) {
           </div>
         </div>`;
 
-      // Handlers for task
       card.querySelector('.t-check').onchange = async (e) => {
         await updateTask(t.id, { status: e.target.checked ? 'done' : 'todo' });
         renderList();
@@ -634,8 +544,6 @@ async function renderTasksTab(container, eventId, availableUsers, userMap) {
       card.querySelector('.t-del-btn').onclick = async () => {
         if (confirm('Taak verwijderen?')) { await deleteTask(t.id); renderList(); }
       };
-
-      // Handlers for subtasks
       card.querySelectorAll('.st-check').forEach(cb => cb.onchange = async (e) => {
         await updateSubtask(cb.dataset.id, { is_completed: e.target.checked });
         renderList();
@@ -713,7 +621,6 @@ async function renderAttachmentsTab(container, eventId) {
     const url = container.querySelector('#an-url').value.trim();
     const title = container.querySelector('#an-title').value.trim();
     if (!url) return alert('URL is verplicht');
-
     const { data: { user } } = await supabase.auth.getUser();
     await addAttachment({
       event_id: eventId,
