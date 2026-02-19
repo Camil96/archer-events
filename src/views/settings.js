@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { SUPABASE_URL } from "../config.js";
-import { store } from "../store.js";
+import { importEventCatalog2026, store } from "../store.js";
 import { esc, showToast } from "../utils.js";
 
 const BRANDS = [
@@ -102,6 +102,7 @@ function renderShell() {
     <section class="cp-shell">
       <aside class="cp-nav" aria-label="Instellingen secties">
         <div class="cp-nav-head">
+          <img class="cp-brand-logo" src="/archer-wordmark.png" alt="Archer" onerror="this.style.display='none'">
           <p class="cp-eyebrow">Archer Events</p>
           <h2>Control Panel</h2>
           <p>Hospitality operations setup voor teams, locaties en workflows.</p>
@@ -330,6 +331,24 @@ async function renderOrganisatieSection(container) {
           </label>
         </div>
       </article>
+
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>Eventkalender 2026 import</h3>
+            <p>
+              Laad de aangeleverde events uit de planning in zonder duplicaten. Brandmapping:
+              <strong> Forex workshop = Academy + Invest</strong>,
+              <strong> Investor Introduction = Fund</strong>,
+              <strong> Mastermind/Masterclass = Invest</strong>.
+            </p>
+          </div>
+          <button class="cp-btn cp-btn-primary" id="cp-import-event-catalog" type="button">Importeer events</button>
+        </header>
+        <p class="cp-hint">
+          Gebruikt een dedupe-check op titel + startmoment. Bestaande events blijven ongewijzigd.
+        </p>
+      </article>
     </div>
   `;
 
@@ -382,6 +401,25 @@ async function renderOrganisatieSection(container) {
     }
 
     showToast(`Booking presets opgeslagen voor ${getBrandLabel(brandId)}.`, "success");
+  };
+
+  const importButton = container.querySelector("#cp-import-event-catalog");
+  importButton.onclick = async () => {
+    importButton.disabled = true;
+    importButton.textContent = "Importeren...";
+
+    try {
+      const result = await importEventCatalog2026();
+      showToast(
+        `Import voltooid: ${result.inserted} toegevoegd, ${result.skipped} reeds aanwezig, ${result.corrected || 0} gecorrigeerd.`,
+        "success"
+      );
+    } catch (error) {
+      showToast(`Import mislukt: ${error.message}`, "error");
+    } finally {
+      importButton.disabled = false;
+      importButton.textContent = "Importeer events";
+    }
   };
 }
 

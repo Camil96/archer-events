@@ -199,6 +199,14 @@ textarea {
   gap: 12px;
 }
 
+.header-brand-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(77, 115, 255, 0.4));
+}
+
 .header-actions-row {
   display: flex;
   gap: 8px;
@@ -1469,6 +1477,15 @@ textarea:focus {
 .cp-nav-head p,
 .cp-nav-head .cp-eyebrow {
   margin: 0;
+}
+
+.cp-brand-logo {
+  height: 28px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 10px rgba(77, 115, 255, 0.25));
 }
 
 .cp-eyebrow {

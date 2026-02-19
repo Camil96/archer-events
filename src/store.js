@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient.js";
-import { getBrandAliases, resolveBrandKey } from "./config.js";
+import { getBrandAliases, getBrandLabel, resolveBrandKey } from "./config.js";
+import { EVENT_CATALOG_2026 } from "./data/eventCatalog2026.js";
 
 export const store = {
   brandId: "academy",
@@ -51,6 +52,65 @@ function getBrandFilterValues(rawBrand) {
   return [...new Set(aliases.map((alias) => String(alias || "").trim()).filter(Boolean))];
 }
 
+function toMinuteStamp(startAt) {
+  const stamp = new Date(startAt || "").getTime();
+  return Number.isFinite(stamp) ? Math.floor(stamp / 60000) : NaN;
+}
+
+function normalizeBrandLabel(rawBrand) {
+  return getBrandLabel(rawBrand || "Invest");
+}
+
+function toCatalogKey(brand, title, startAt) {
+  const cleanBrand = normalizeBrandLabel(brand).toLowerCase();
+  const cleanTitle = String(title || "").trim().toLowerCase();
+  const minuteStamp = toMinuteStamp(startAt);
+  if (!Number.isFinite(minuteStamp)) return `${cleanBrand}|${cleanTitle}|${String(startAt || "")}`;
+  return `${cleanBrand}|${cleanTitle}|${minuteStamp}`;
+}
+
+async function applyCatalogCorrections(existingRows) {
+  const investorIntroMinutes = new Set(
+    EVENT_CATALOG_2026.filter((event) => event.title === "Investor Introduction")
+      .map((event) => toMinuteStamp(event.start_at))
+      .filter(Number.isFinite)
+  );
+
+  const masterclassMinutes = new Set(
+    EVENT_CATALOG_2026.filter((event) => event.title === "Masterclass")
+      .map((event) => toMinuteStamp(event.start_at))
+      .filter(Number.isFinite)
+  );
+
+  let corrected = 0;
+
+  for (const row of existingRows || []) {
+    const stamp = toMinuteStamp(row.start_at);
+    if (!Number.isFinite(stamp)) continue;
+
+    const title = String(row.title || "").trim().toLowerCase();
+    const brand = normalizeBrandLabel(row.brand);
+    const changes = {};
+
+    if (title === "investor introduction" && investorIntroMinutes.has(stamp) && brand !== "Fund") {
+      changes.brand = "Fund";
+    }
+
+    if (masterclassMinutes.has(stamp)) {
+      if (title === "archer invest: de vierdaagse") changes.title = "Masterclass";
+      if (brand !== "Invest") changes.brand = "Invest";
+    }
+
+    if (!Object.keys(changes).length) continue;
+
+    const { error } = await supabase.from("events").update(changes).eq("id", row.id);
+    if (error) throw error;
+    corrected += 1;
+  }
+
+  return corrected;
+}
+
 /* ─── EVENTS ─── */
 export async function listEvents(filters = {}) {
   let query = supabase
@@ -78,6 +138,51 @@ export async function listEvents(filters = {}) {
   const { data, error } = await query;
   if (error) throw error;
   return data.map(e => ({ ...e, start_at: e.start_at || e.event_date }));
+}
+
+export async function importEventCatalog2026() {
+  const rows = EVENT_CATALOG_2026.map((event) => ({
+    title: event.title,
+    brand: normalizeBrandLabel(event.brand),
+    start_at: event.start_at,
+    end_at: event.end_at || null,
+    location: event.location || null,
+    timezone: "Europe/Brussels",
+    capacity: 0,
+    description: event.description || null,
+  }));
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("events")
+    .select("id,title,start_at,brand")
+    .gte("start_at", "2026-01-01T00:00:00Z")
+    .lte("start_at", "2026-12-31T23:59:59Z");
+
+  if (fetchError) throw fetchError;
+
+  const corrected = await applyCatalogCorrections(existing || []);
+
+  const { data: refreshed, error: refreshError } = await supabase
+    .from("events")
+    .select("title,start_at,brand")
+    .gte("start_at", "2026-01-01T00:00:00Z")
+    .lte("start_at", "2026-12-31T23:59:59Z");
+
+  if (refreshError) throw refreshError;
+
+  const existingKeys = new Set((refreshed || []).map((row) => toCatalogKey(row.brand, row.title, row.start_at)));
+  const missingRows = rows.filter((row) => !existingKeys.has(toCatalogKey(row.brand, row.title, row.start_at)));
+
+  if (!missingRows.length) return { inserted: 0, skipped: rows.length, corrected };
+
+  const { error: insertError } = await supabase.from("events").insert(missingRows);
+  if (insertError) throw insertError;
+
+  return {
+    inserted: missingRows.length,
+    skipped: rows.length - missingRows.length,
+    corrected,
+  };
 }
 
 export async function createEvent(payload) {

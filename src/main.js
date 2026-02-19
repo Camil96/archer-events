@@ -27,7 +27,7 @@ init();
 
 function renderLogin(container) {
   const base = import.meta.env.BASE_URL || '/';
-  const logoUrl = `${base}archer-logo.png`;
+  const logoUrl = `${base}archer-wordmark.png`;
 
   container.innerHTML = `
     <div style="
@@ -60,8 +60,8 @@ function renderLogin(container) {
             src="${logoUrl}"
             alt="Archer"
             style="
-              height:clamp(240px, 30vw, 420px);
-              width:auto;
+              width:min(100%, 420px);
+              height:auto;
               max-width:100%;
               object-fit:contain;
               display:block;

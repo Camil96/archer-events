@@ -7,7 +7,8 @@ import {
   listAttachments, addAttachment, deleteAttachment,
   listBrands, createBrand, updateBrand,
   listAvailableUsers, listAuditLog, getDashboardStats,
-  assignTask, unassignTask
+  assignTask, unassignTask,
+  importEventCatalog2026
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
 import { renderTimeline } from "./timeline.js";
@@ -19,6 +20,7 @@ import { getBrandColor, getBrandLabel } from "./config.js";
 let activePage = 'Dashboard';
 let rootEl;
 let filters = { brand: '', search: '', period: '' };
+let catalogImportStarted = false;
 
 const DEFAULT_EVENT_TITLE_PRESETS = [
   'Performance sessie',
@@ -55,7 +57,7 @@ async function render() {
   rootEl.innerHTML = `
     <div class="app-layout">
       <aside class="sidebar" id="sidebar">
-        <div class="sidebar-logo"><img src="/logo-archer.png" alt="Archer" onerror="this.style.display='none'"></div>
+        <div class="sidebar-logo"><img src="/archer-wordmark.png" alt="Archer" onerror="this.style.display='none'"></div>
         
         <div class="nav-section">
           <div class="nav-label">Overzichten</div>
@@ -87,6 +89,7 @@ async function render() {
           <div class="header">
             <div class="header-title-row">
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
+              <img src="/Icon_Blue.png" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
               <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
             </div>
             ${isListView || activePage === 'Calendar' ? `
@@ -167,6 +170,11 @@ async function render() {
     const events = await listEvents(filters);
     downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
+
+  if (!catalogImportStarted) {
+    catalogImportStarted = true;
+    importEventCatalog2026().catch(() => null);
+  }
 
   loadContent();
 }
