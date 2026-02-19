@@ -1,9 +1,13 @@
 import { supabase } from "../supabaseClient.js";
 import {
   SUPABASE_URL,
+  computeBrandCssVariables,
+  cssVarsToInlineStyle,
+  getBrandFullLabel,
   getBrandTheme,
   getBrandLogoIcon,
   getBrandLogoWordmark,
+  normalizeHexColor,
 } from "../config.js";
 import { importEventCatalog2026, store } from "../store.js";
 import { esc, showToast } from "../utils.js";
@@ -12,21 +16,21 @@ const BRANDS = [
   {
     id: "academy",
     key: "archer_academy",
-    label: "Archer Academy",
+    label: getBrandFullLabel("archer_academy"),
     fallbackColor: getBrandTheme("archer_academy").color,
     fallbackEmail: "events@archer.finance",
   },
   {
     id: "invest",
     key: "archer_invest",
-    label: "Archer Invest",
+    label: getBrandFullLabel("archer_invest"),
     fallbackColor: getBrandTheme("archer_invest").color,
     fallbackEmail: "events@archer.finance",
   },
   {
     id: "fund",
     key: "archer_fund",
-    label: "Archer Fund",
+    label: getBrandFullLabel("archer_fund"),
     fallbackColor: getBrandTheme("archer_fund").color,
     fallbackEmail: "events@archer.finance",
   },
@@ -86,12 +90,14 @@ const EXPORT_FIELDS = [
 ];
 
 const BRAND_IDS = BRANDS.map((b) => b.id);
+const BRAND_VISUAL_KEYS = ["accent_color", "brand_name", "logo_url"];
 
 const state = {
   root: null,
   contentEl: null,
   activeSection: "organisatie",
   currentBrand: store.brandId || "academy",
+  brandVisualSettings: {},
   loadToken: 0,
 };
 
@@ -114,6 +120,7 @@ export async function renderSettings(container) {
 
   state.root = root;
   state.currentBrand = store.brandId || state.currentBrand || BRANDS[0].id;
+  await refreshBrandVisualSettings();
 
   renderShell();
   bindShellEvents();
@@ -123,10 +130,12 @@ export async function renderSettings(container) {
 function renderShell() {
   const shellBrandKey = getThemeBrandKey(state.currentBrand);
   const shellIcon = getBrandLogoIcon(shellBrandKey);
-  const shellWordmark = getBrandLogoWordmark(shellBrandKey);
+  const shellVisual = getBrandVisualSettings(state.currentBrand);
+  const shellWordmark = getBrandWordmark(state.currentBrand, shellVisual);
+  const shellStyle = cssVarsToInlineStyle(getShellCssVars(state.currentBrand, shellVisual));
 
   state.root.innerHTML = `
-    <section class="cp-shell" data-brand-theme="${esc(shellBrandKey)}">
+    <section class="cp-shell" data-brand-theme="${esc(shellBrandKey)}" style="${esc(shellStyle)}">
       <aside class="cp-nav" aria-label="Instellingen secties">
         <div class="cp-nav-head">
           <div class="cp-brand-lockup">
@@ -165,7 +174,9 @@ function renderShell() {
               <select id="cp-brand-switch">
                 ${BRANDS.map(
                   (brand) =>
-                    `<option value="${brand.id}" ${brand.id === state.currentBrand ? "selected" : ""}>${brand.label}</option>`
+                    `<option value="${brand.id}" ${brand.id === state.currentBrand ? "selected" : ""}>${esc(
+                      getBrandDisplayName(brand.id)
+                    )}</option>`
                 ).join("")}
               </select>
             </label>
@@ -218,12 +229,21 @@ function syncShellTheme() {
   if (!shell) return;
 
   const brandKey = getThemeBrandKey(state.currentBrand);
+  const visual = getBrandVisualSettings(state.currentBrand);
   shell.dataset.brandTheme = brandKey;
+  applyInlineCssVariables(shell, getShellCssVars(state.currentBrand, visual));
 
   const icon = state.root.querySelector(".cp-brand-icon");
   const wordmark = state.root.querySelector(".cp-brand-logo");
   if (icon) icon.src = getBrandLogoIcon(brandKey);
-  if (wordmark) wordmark.src = getBrandLogoWordmark(brandKey);
+  if (wordmark) wordmark.src = getBrandWordmark(state.currentBrand, visual);
+
+  const brandSelect = state.root.querySelector("#cp-brand-switch");
+  if (brandSelect) {
+    [...brandSelect.options].forEach((option) => {
+      option.textContent = getBrandDisplayName(option.value);
+    });
+  }
 }
 
 async function loadSection(sectionId) {
@@ -281,7 +301,10 @@ async function renderOrganisatieSection(container) {
 
     <div class="cp-stack">
       ${BRANDS.map((brand) => {
-        const brandName = getSetting(settingsRows, brand.id, "brand_name", brand.label);
+        const brandName = normalizeBrandDisplayName(
+          getSetting(settingsRows, brand.id, "brand_name", getBrandDisplayName(brand.id)),
+          brand.id
+        );
         const contactEmail = getSetting(settingsRows, brand.id, "contact_email", brand.fallbackEmail);
         const accentColor = getSetting(settingsRows, brand.id, "accent_color", brand.fallbackColor);
         const defaultLocationId = getSetting(settingsRows, brand.id, "default_location_id", "");
@@ -293,7 +316,7 @@ async function renderOrganisatieSection(container) {
               <div class="cp-card-title-wrap">
                 <span class="cp-color-bullet" style="background:${esc(accentColor)}"></span>
                 <div>
-                  <h3>${esc(brand.label)}</h3>
+                  <h3>${esc(getBrandDisplayName(brand.id))}</h3>
                   <p>Merk ID: <code>${esc(brand.id)}</code></p>
                 </div>
               </div>
@@ -383,7 +406,7 @@ async function renderOrganisatieSection(container) {
             <p>
               Laad de aangeleverde events uit de planning in zonder duplicaten. Brandmapping:
               <strong> Forex workshop = Academy + Invest</strong>,
-              <strong> Investor Introduction = Fund</strong>,
+              <strong> Investor Introduction = Archer Investment Fund</strong>,
               <strong> Mastermind/Masterclass = Invest</strong>.
             </p>
           </div>
@@ -416,6 +439,8 @@ async function renderOrganisatieSection(container) {
       }
 
       showToast(`Instellingen opgeslagen voor ${getBrandLabel(brandId)}.`, "success");
+      await refreshBrandVisualSettings();
+      syncShellTheme();
       await loadSection("organisatie");
     };
   });
@@ -1917,7 +1942,8 @@ function renderTagList(values, maxCount = 3) {
 
 function renderBrandOptions(selectedBrandId = state.currentBrand) {
   return BRANDS.map(
-    (brand) => `<option value="${brand.id}" ${brand.id === selectedBrandId ? "selected" : ""}>${esc(brand.label)}</option>`
+    (brand) =>
+      `<option value="${brand.id}" ${brand.id === selectedBrandId ? "selected" : ""}>${esc(getBrandDisplayName(brand.id))}</option>`
   ).join("");
 }
 
@@ -1925,8 +1951,40 @@ function getThemeBrandKey(brandId) {
   return BRANDS.find((brand) => brand.id === brandId)?.key || "archer_academy";
 }
 
+function normalizeBrandDisplayName(value, brandId) {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+  if (brandId === "fund") {
+    const lowered = clean.toLowerCase();
+    if (lowered === "fund" || lowered === "archer fund") return "Archer Investment Fund";
+  }
+  return clean;
+}
+
+function getBrandVisualSettings(brandId) {
+  return state.brandVisualSettings?.[brandId] || {};
+}
+
+function getBrandDisplayName(brandId, visual = getBrandVisualSettings(brandId)) {
+  const custom = normalizeBrandDisplayName(visual?.brand_name, brandId);
+  if (custom) return custom;
+  const fallback = BRANDS.find((brand) => brand.id === brandId)?.label;
+  return normalizeBrandDisplayName(fallback, brandId) || brandId || "Onbekend merk";
+}
+
+function getBrandWordmark(brandId, visual = getBrandVisualSettings(brandId)) {
+  const custom = String(visual?.logo_url || "").trim();
+  if (custom) return custom;
+  return getBrandLogoWordmark(getThemeBrandKey(brandId));
+}
+
+function getShellCssVars(brandId, visual = getBrandVisualSettings(brandId)) {
+  const accentColor = normalizeHexColor(visual?.accent_color);
+  return computeBrandCssVariables(getThemeBrandKey(brandId), { accentColor });
+}
+
 function getBrandLabel(brandId) {
-  return BRANDS.find((brand) => brand.id === brandId)?.label || brandId || "Onbekend merk";
+  return getBrandDisplayName(brandId);
 }
 
 function getSetting(settingsRows, brandId, key, fallback = "") {
@@ -2042,6 +2100,42 @@ function createUuidLike() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function applyInlineCssVariables(element, variables = {}) {
+  if (!element || !variables) return;
+  Object.entries(variables).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === "") return;
+    element.style.setProperty(key, String(value));
+  });
+}
+
+async function refreshBrandVisualSettings() {
+  state.brandVisualSettings = await fetchBrandVisualSettings(BRAND_IDS);
+}
+
+async function fetchBrandVisualSettings(brandIds) {
+  const fallback = {};
+  try {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("brand,key,value")
+      .in("brand", brandIds)
+      .in("key", BRAND_VISUAL_KEYS);
+
+    if (error) return fallback;
+
+    return (data || []).reduce((acc, row) => {
+      const brand = String(row?.brand || "").trim();
+      const key = String(row?.key || "").trim();
+      if (!brand || !key) return acc;
+      if (!acc[brand]) acc[brand] = {};
+      acc[brand][key] = row?.value;
+      return acc;
+    }, {});
+  } catch {
+    return fallback;
+  }
+}
+
 async function fetchAppSettings(brandIds) {
   const { data, error } = await supabase.from("app_settings").select("*").in("brand", brandIds);
   if (error) throw error;
@@ -2117,7 +2211,9 @@ function errorHasColumn(error, columnName) {
 function openModal({ title, description = "", body, saveLabel = "Opslaan", onSave }) {
   const overlay = document.createElement("div");
   overlay.className = "cp-modal-overlay";
-  overlay.dataset.brandTheme = getThemeBrandKey(state.currentBrand);
+  const modalThemeBrandKey = getThemeBrandKey(state.currentBrand);
+  overlay.dataset.brandTheme = modalThemeBrandKey;
+  applyInlineCssVariables(overlay, getShellCssVars(state.currentBrand));
 
   overlay.innerHTML = `
     <div class="cp-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">

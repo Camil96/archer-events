@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { getBrandAliases, getBrandLabel, resolveBrandKey } from "./config.js";
+import { getBrandAliases, getBrandDbValue, resolveBrandKey } from "./config.js";
 import { EVENT_CATALOG_2026 } from "./data/eventCatalog2026.js";
 
 export const store = {
@@ -58,7 +58,7 @@ function toMinuteStamp(dateValue) {
 }
 
 function normalizeBrandLabel(rawBrand) {
-  return getBrandLabel(rawBrand || "Invest");
+  return getBrandDbValue(rawBrand || "Invest");
 }
 
 function toEventDateValue(dateInput) {
