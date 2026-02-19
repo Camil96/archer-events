@@ -11,8 +11,9 @@ import {
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
 import { renderTimeline } from "./timeline.js";
-import { esc, formatDate, formatDateTime, downloadCSV } from "./utils.js";
+import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
 import { renderSettings } from "./views/settings.js";
+import { getBrandColor, getBrandLabel } from "./config.js";
 
 // ─── GLOBAL STATE ───────────────────────────────────────────
 let activePage = 'Dashboard';
@@ -276,7 +277,8 @@ function renderEventList(container, events) {
   events.forEach(ev => {
     const el = document.createElement('div');
     el.className = 'card event-card';
-    const brandColor = ev.brand === 'Invest' ? '#10B981' : ev.brand === 'Fund' ? '#F59E0B' : 'var(--primary)';
+    const brandColor = getBrandColor(ev.brand);
+    const brandLabel = getBrandLabel(ev.brand);
     el.style.borderTop = `4px solid ${brandColor}`;
 
     el.innerHTML = `
@@ -287,7 +289,7 @@ function renderEventList(container, events) {
       </div>
       <div class="event-card-meta">📍 ${esc(ev.location || 'Nog te bepalen')}</div>
       <div class="event-card-footer">
-        <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(ev.brand)}</span>
+        <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
         ${ev.expected_attendance ? `<span class="muted" style="font-size:0.8rem;">👥 ${ev.expected_attendance} verwacht</span>` : ''}
       </div>`;
 
@@ -304,6 +306,7 @@ async function openModal(event) {
   const isEdit = !!event;
   const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
   const settingsBrand = normalizeBrandForSettings(initialBrand);
+  const selectedBrandLabel = getBrandLabel(initialBrand);
 
   const [availableUsers, titleRows, locationRows, settingsRows] = await Promise.all([
     listAvailableUsers().catch(() => []),
@@ -319,7 +322,9 @@ async function openModal(event) {
   overlay.className = 'modal-overlay';
 
   const brands = ['Academy', 'Invest', 'Fund'];
-  const brandOptions = brands.map(b => `<option value="${b}" ${(event?.brand || 'Academy') === b ? 'selected' : ''}>${b}</option>`).join('');
+  const brandOptions = brands
+    .map((brand) => `<option value="${brand}" ${selectedBrandLabel === brand ? 'selected' : ''}>${brand}</option>`)
+    .join('');
   const initialLocationType = inferLocationType(event?.location, event?.location_url);
   const locationTypeOptions = [
     { value: 'physical', label: 'Fysiek' },
@@ -524,15 +529,21 @@ async function openModal(event) {
       description: overlay.querySelector('#m-desc').value,
       notes_internal: overlay.querySelector('#m-notes').value,
     };
-    if (!payload.title) return alert('Titel is verplicht');
+    if (!payload.title) {
+      showToast('Titel is verplicht.', 'error');
+      return;
+    }
     if (overlay.querySelector('#m-loc-type').value === 'online' && !String(payload.location_url || '').trim()) {
-      return alert('Voor online events is een online link verplicht.');
+      showToast('Voor online events is een online link verplicht.', 'error');
+      return;
     }
     try {
       if (isEdit) await updateEvent(event.id, payload);
       else await createEvent(payload);
       close();
-    } catch (e) { alert(e.message); }
+    } catch (e) {
+      showToast(e.message || 'Opslaan mislukt.', 'error');
+    }
   };
 
   if (isEdit) {
@@ -849,7 +860,10 @@ async function renderParticipantsTab(container, eventId) {
       phone: container.querySelector('#pn-phone').value.trim(),
       status: 'invited'
     };
-    if (!payload.name) return alert('Naam is verplicht');
+    if (!payload.name) {
+      showToast('Naam is verplicht.', 'error');
+      return;
+    }
     await addParticipant(payload);
     renderParticipantsTab(container, eventId);
   };
@@ -1017,7 +1031,10 @@ async function renderAttachmentsTab(container, eventId) {
   container.querySelector('#an-add').onclick = async () => {
     const url = container.querySelector('#an-url').value.trim();
     const title = container.querySelector('#an-title').value.trim();
-    if (!url) return alert('URL is verplicht');
+    if (!url) {
+      showToast('URL is verplicht.', 'error');
+      return;
+    }
     const { data: { user } } = await supabase.auth.getUser();
     await addAttachment({
       event_id: eventId,

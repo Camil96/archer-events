@@ -1,8 +1,55 @@
 import { supabase } from "./supabaseClient.js";
+import { getBrandAliases, resolveBrandKey } from "./config.js";
 
 export const store = {
   brandId: "academy",
 };
+
+function normalizePeriodFilter(period) {
+  const value = String(period || "").trim().toLowerCase();
+  if (!value) return "";
+  if (value === "this_month" || value === "month") return "month";
+  if (value === "this_quarter" || value === "quarter") return "quarter";
+  if (value === "this_year" || value === "year") return "year";
+  return "";
+}
+
+function getPeriodBounds(periodKey) {
+  const now = new Date();
+
+  if (periodKey === "month") {
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    };
+  }
+
+  if (periodKey === "quarter") {
+    const quarter = Math.floor(now.getMonth() / 3);
+    return {
+      start: new Date(now.getFullYear(), quarter * 3, 1),
+      end: new Date(now.getFullYear(), (quarter + 1) * 3, 1),
+    };
+  }
+
+  if (periodKey === "year") {
+    return {
+      start: new Date(now.getFullYear(), 0, 1),
+      end: new Date(now.getFullYear() + 1, 0, 1),
+    };
+  }
+
+  return null;
+}
+
+function getBrandFilterValues(rawBrand) {
+  const input = String(rawBrand || "").trim();
+  if (!input || input === "Alles") return [];
+
+  const canonical = resolveBrandKey(input);
+  const aliases = getBrandAliases(canonical) || [];
+  return [...new Set(aliases.map((alias) => String(alias || "").trim()).filter(Boolean))];
+}
 
 /* ─── EVENTS ─── */
 export async function listEvents(filters = {}) {
@@ -12,26 +59,20 @@ export async function listEvents(filters = {}) {
     .is('deleted_at', null)
     .order('start_at', { ascending: true });
 
-  if (filters.brand && filters.brand !== 'Alles') query = query.eq('brand', filters.brand);
+  const brandFilterValues = getBrandFilterValues(filters.brand);
+  if (brandFilterValues.length === 1) {
+    query = query.eq('brand', brandFilterValues[0]);
+  } else if (brandFilterValues.length > 1) {
+    query = query.in('brand', brandFilterValues);
+  }
+
   if (filters.search) query = query.ilike('title', `%${filters.search}%`);
 
   // Date range filtering
-  if (filters.period) {
-    const now = new Date();
-    if (filters.period === 'this_month') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
-      query = query.gte('start_at', start).lte('start_at', end);
-    } else if (filters.period === 'this_quarter') {
-      const quarter = Math.floor(now.getMonth() / 3);
-      const start = new Date(now.getFullYear(), quarter * 3, 1).toISOString();
-      const end = new Date(now.getFullYear(), (quarter + 1) * 3, 0).toISOString();
-      query = query.gte('start_at', start).lte('start_at', end);
-    } else if (filters.period === 'this_year') {
-      const start = new Date(now.getFullYear(), 0, 1).toISOString();
-      const end = new Date(now.getFullYear(), 11, 31).toISOString();
-      query = query.gte('start_at', start).lte('start_at', end);
-    }
+  const normalizedPeriod = normalizePeriodFilter(filters.period);
+  const bounds = getPeriodBounds(normalizedPeriod);
+  if (bounds) {
+    query = query.gte('start_at', bounds.start.toISOString()).lt('start_at', bounds.end.toISOString());
   }
 
   const { data, error } = await query;
@@ -135,7 +176,7 @@ export async function deleteSubtask(id) {
 /* ─── PARTICIPANTS ─── */
 export async function listParticipants(eventId) {
   const { data, error } = await supabase.from('event_participants').select('*').eq('event_id', eventId).order('name');
-  if (error) { console.warn("Participants error:", error); return []; }
+  if (error) return [];
   return data;
 }
 
@@ -159,7 +200,7 @@ export async function deleteParticipant(id) {
 /* ─── ATTACHMENTS ─── */
 export async function listAttachments(eventId) {
   const { data, error } = await supabase.from('attachments').select('*').eq('event_id', eventId).order('created_at', { ascending: false });
-  if (error) { console.warn("Attachments error:", error); return []; }
+  if (error) return [];
   return data;
 }
 
@@ -196,14 +237,14 @@ export async function updateBrand(id, payload) {
 /* ─── USERS ─── */
 export async function listAvailableUsers() {
   const { data, error } = await supabase.from('available_users').select('*').order('full_name');
-  if (error) { console.warn("available_users error:", error); return []; }
+  if (error) return [];
   return data;
 }
 
 /* ─── AUDIT LOG ─── */
 export async function listAuditLog(limit = 50) {
   const { data, error } = await supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(limit);
-  if (error) { console.warn("audit_log error:", error); return []; }
+  if (error) return [];
   return data;
 }
 

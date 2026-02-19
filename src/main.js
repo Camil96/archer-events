@@ -19,7 +19,6 @@ async function init() {
       if (event === 'SIGNED_OUT') renderLogin(root);
     });
   } catch (err) {
-    console.error("Init error:", err);
     root.innerHTML = `<div style="padding:20px;color:red">Application Error: ${err.message}</div>`;
   }
 }
@@ -174,4 +173,3 @@ function renderLogin(container) {
     footer.style.display = 'none';
   });
 }
-

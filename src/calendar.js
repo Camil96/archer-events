@@ -4,6 +4,7 @@
   - Month View (Detail grid)
   - Full Navigation
 */
+import { getBrandColor } from "./config.js";
 
 const MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
 const DAYS = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
@@ -185,14 +186,9 @@ export function renderCalendar(container, events, onEventClick) {
                 badge.style.overflow = 'hidden';
                 badge.style.textOverflow = 'ellipsis';
 
-                // Brand Colors
-                if (ev.brand === 'Invest') {
-                    badge.style.background = '#DCFCE7'; badge.style.color = '#166534';
-                } else if (ev.brand === 'Fund') {
-                    badge.style.background = '#FEF3C7'; badge.style.color = '#92400E';
-                } else {
-                    badge.style.background = '#DBEAFE'; badge.style.color = '#1E40AF'; // Academy/Default
-                }
+                const brandColor = getBrandColor(ev.brand);
+                badge.style.background = `${brandColor}20`;
+                badge.style.color = brandColor;
 
                 badge.onclick = (e) => { e.stopPropagation(); onEventClick(ev); };
                 el.appendChild(badge);

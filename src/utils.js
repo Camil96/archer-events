@@ -26,8 +26,6 @@ export function showToast(message, type = "success") {
   if (!message) return;
 
   if (typeof document === "undefined") {
-    const logger = type === "error" ? console.error : console.log;
-    logger(message);
     return;
   }
 

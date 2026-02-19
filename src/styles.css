@@ -1,20 +1,20 @@
 :root {
   /* ARCHER BRAND COLORS */
-  --primary: #2563EB;
-  --primary-hover: #1D4ED8;
-  --primary-vlight: #EFF6FF;
+  --primary: #4d73ff;
+  --primary-hover: #3d66ff;
+  --primary-vlight: #eef2ff;
   --secondary: #10B981;
   --danger: #EF4444;
   --warning: #F59E0B;
 
   /* STOIC UI SCALES */
-  --bg-main: #F8FAFC;
+  --bg-main: #f4f4f4;
   --bg-card: #FFFFFF;
-  --text-heading: #0F172A;
-  --text-body: #334155;
-  --text-muted: #64748B;
-  --border: #E2E8F0;
-  --border-light: #F1F5F9;
+  --text-heading: #0f1f3a;
+  --text-body: #1a1a1a;
+  --text-muted: #6b7280;
+  --border: #d9e2f0;
+  --border-light: #edf2fa;
 
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -24,6 +24,18 @@
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+  /* Legacy token aliases used by existing modules */
+  --white: #ffffff;
+  --black: #1a1a1a;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-400: #9ca3af;
+  --gray-600: #4b5563;
+  --gray-800: #1f2937;
+  --blue: #4d73ff;
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --radius: 10px;
 }
 
 * {
