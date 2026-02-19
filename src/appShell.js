@@ -114,16 +114,7 @@ async function loadContent() {
 
   try {
     if (activePage === 'Admin') {
-      // Geef container de id die renderSettings verwacht
-      container.id = 'page-body';
-      // Maak een dummy page-actions aan als die nog niet bestaat
-      if (!document.getElementById('page-actions')) {
-        const pa = document.createElement('div');
-        pa.id = 'page-actions';
-        pa.style.display = 'none';
-        container.parentNode.insertBefore(pa, container);
-      }
-      await renderSettings();
+      await renderSettings(container);
     } else if (activePage === 'Calendar') {
       const events = await listEvents();
       renderCalendar(container, events, (ev) => openModal(ev));
