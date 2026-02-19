@@ -12,21 +12,16 @@ import {
   store
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
+import { renderTimeline } from "./timeline.js";
 import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
 import { renderSettings } from "./views/settings.js";
 import {
   getBrandColor,
-  getBrandDbValue,
   getBrandLabel,
-  getBrandFullLabel,
   getBrandTheme,
-  getBrandId,
   getBrandLogoIcon,
   getBrandLogoWordmark,
   resolveBrandKey,
-  computeBrandCssVariables,
-  cssVarsToInlineStyle,
-  normalizeHexColor,
 } from "./config.js";
 
 // ─── GLOBAL STATE ───────────────────────────────────────────
@@ -34,8 +29,11 @@ let activePage = 'Dashboard';
 let rootEl;
 let filters = { brand: '', search: '', period: '' };
 let catalogImportStarted = false;
+<<<<<<< HEAD
 let brandVisualSettingsById = {};
 let globalBrandFilter = getBrandDbValue(store.brandId || "Academy");
+=======
+>>>>>>> parent of 2a9a512 (branding)
 
 const DEFAULT_EVENT_TITLE_PRESETS = [
   'Performance sessie',
@@ -67,6 +65,7 @@ export function renderAppShell(root, session) {
 }
 
 async function render() {
+<<<<<<< HEAD
   brandVisualSettingsById = await fetchBrandVisualSettings();
   filters.brand = globalBrandFilter || '';
   const canManageEvents = ['Dashboard', 'Calendar'].includes(activePage);
@@ -86,9 +85,17 @@ async function render() {
     <option value="Fund" ${globalBrandFilter === "Fund" ? "selected" : ""}>${esc(fundNavLabel)}</option>
   `;
   const pageTitle = getActivePageTitle();
+=======
+  const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
+  const shellBrandKey = resolveShellBrandKey();
+  const shellTheme = getBrandTheme(shellBrandKey);
+  const shellBrandLabel = shellTheme.label;
+  const shellWordmark = getBrandLogoWordmark(shellBrandKey);
+  const shellIcon = getBrandLogoIcon(shellBrandKey);
+>>>>>>> parent of 2a9a512 (branding)
 
   rootEl.innerHTML = `
-    <div class="app-layout" data-brand-theme="${esc(shellBrandKey)}" style="${esc(cssVarsToInlineStyle(shellThemeVars))}">
+    <div class="app-layout" data-brand-theme="${esc(shellBrandKey)}">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-logo"><img src="${esc(shellWordmark)}" alt="Archer" onerror="this.style.display='none'"></div>
         
@@ -96,13 +103,20 @@ async function render() {
           <div class="nav-label">Overzichten</div>
           <a class="nav-item ${activePage === 'Dashboard' ? 'active' : ''}" data-page="Dashboard"><span class="nav-icon">📊</span>Dashboard</a>
           <a class="nav-item ${activePage === 'Calendar' ? 'active' : ''}" data-page="Calendar"><span class="nav-icon">📅</span>Kalender</a>
+          <a class="nav-item ${activePage === 'Timeline' ? 'active' : ''}" data-page="Timeline"><span class="nav-icon">⏳</span>Tijdlijn</a>
         </div>
 
         <div class="nav-section">
           <div class="nav-label">Contexten</div>
+<<<<<<< HEAD
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Academy' ? 'active' : ''}" data-brand="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Invest' ? 'active' : ''}" data-brand="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Fund' ? 'active' : ''}" data-brand="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
+=======
+          <a class="nav-item ${activePage === 'Academy' ? 'active' : ''}" data-page="Academy"><span class="nav-icon">🎓</span>Academy</a>
+          <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>Invest</a>
+          <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>Fund</a>
+>>>>>>> parent of 2a9a512 (branding)
         </div>
 
         <div class="nav-section">
@@ -122,8 +136,8 @@ async function render() {
             <div class="header-title-row">
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
               <img src="${esc(shellIcon)}" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
-              <h1>${esc(pageTitle)}</h1>
-              <span class="header-brand-chip">${esc(shellBrandDisplay)}</span>
+              <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
+              <span class="header-brand-chip">Archer ${esc(shellBrandLabel)}</span>
             </div>
             <div class="header-actions-row">
               <label class="header-brand-filter">
@@ -249,6 +263,14 @@ async function loadContent() {
     } else if (activePage === 'Calendar') {
       const events = await listEvents(activeFilters);
       renderCalendar(container, events, (ev) => openModal(ev));
+<<<<<<< HEAD
+=======
+    } else if (activePage === 'Timeline') {
+      const events = await listEvents();
+      renderTimeline(container, events, (ev) => openModal(ev));
+    } else if (activePage === 'Dashboard') {
+      await renderDashboard(container);
+>>>>>>> parent of 2a9a512 (branding)
     } else {
       await renderDashboard(container);
     }
@@ -282,6 +304,16 @@ function renderFilters(container, initialEvents) {
   filterSection.innerHTML = `
     <div class="filter-bar">
       <input type="text" id="f-search" placeholder="🔍 Zoeken op titel..." value="${esc(filters.search)}" class="filter-input">
+<<<<<<< HEAD
+=======
+      ${activePage === 'Dashboard' ? `
+      <select id="f-brand" class="filter-select">
+        <option value="">Alle merken</option>
+        <option value="Academy" ${filters.brand === 'Academy' ? 'selected' : ''}>Academy</option>
+        <option value="Invest" ${filters.brand === 'Invest' ? 'selected' : ''}>Invest</option>
+        <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>Fund</option>
+      </select>` : ''}
+>>>>>>> parent of 2a9a512 (branding)
       <select id="f-period" class="filter-select">
         <option value="">Alle periodes</option>
         <option value="month" ${filters.period === 'month' ? 'selected' : ''}>Deze maand</option>
@@ -353,13 +385,16 @@ function renderEventList(container, events) {
 // ─── MODAL ───────────────────────────────────────────────────
 async function openModal(event) {
   const isEdit = !!event;
+<<<<<<< HEAD
   const initialBrand = event?.brand || globalBrandFilter || getBrandDbValue(store.brandId || "Academy");
   const selectedBrandValue = getBrandDbValue(initialBrand);
+=======
+  const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
+>>>>>>> parent of 2a9a512 (branding)
   const initialBrandKey = resolveBrandKey(initialBrand);
-  const initialBrandVisual = getBrandVisualSettings(initialBrandKey);
   const initialTheme = getBrandTheme(initialBrandKey);
-  const initialThemeVars = getBrandCssVars(initialBrandKey, initialBrandVisual);
   const settingsBrand = normalizeBrandForSettings(initialBrand);
+  const selectedBrandLabel = getBrandLabel(initialBrand);
 
   const [availableUsers, titleRows, locationRows, settingsRows, cateringRows] = await Promise.all([
     listAvailableUsers().catch(() => []),
@@ -375,16 +410,9 @@ async function openModal(event) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
 
-  const brands = [
-    { value: 'Academy', key: 'archer_academy' },
-    { value: 'Invest', key: 'archer_invest' },
-    { value: 'Fund', key: 'archer_fund' },
-  ];
+  const brands = ['Academy', 'Invest', 'Fund'];
   const brandOptions = brands
-    .map((brand) => {
-      const label = getBrandFilterOptionLabel(brand.key);
-      return `<option value="${brand.value}" ${selectedBrandValue === brand.value ? 'selected' : ''}>${esc(label)}</option>`;
-    })
+    .map((brand) => `<option value="${brand}" ${selectedBrandLabel === brand ? 'selected' : ''}>${brand}</option>`)
     .join('');
   const initialLocationType = inferLocationType(event?.location, event?.location_url);
   const locationTypeOptions = [
@@ -394,7 +422,7 @@ async function openModal(event) {
   ];
 
   overlay.innerHTML = `
-    <div class="modal modal-large event-modal" data-brand-theme="${esc(initialBrandKey)}" style="${esc(cssVarsToInlineStyle(initialThemeVars))}">
+    <div class="modal modal-large event-modal" data-brand-theme="${esc(initialBrandKey)}">
       <div class="modal-header">
         <div class="event-modal-brand">
           <img src="${esc(initialTheme.logoIcon)}" alt="Archer icon" onerror="this.style.display='none'">
@@ -501,7 +529,6 @@ async function openModal(event) {
     const brandKey = resolveBrandKey(brandEl.value);
     const theme = getBrandTheme(brandKey);
     modalEl.dataset.brandTheme = brandKey;
-    applyInlineCssVariables(modalEl, getBrandCssVars(brandKey));
     if (modalIconEl) modalIconEl.src = theme.logoIcon;
   };
 
@@ -967,6 +994,7 @@ function inferLocationType(location, locationUrl) {
   return isOnline ? 'online' : 'physical';
 }
 
+<<<<<<< HEAD
 async function fetchBrandVisualSettings() {
   const fallback = {};
   try {
@@ -1046,6 +1074,8 @@ function getActivePageTitle() {
   return 'Dashboard';
 }
 
+=======
+>>>>>>> parent of 2a9a512 (branding)
 function resolveShellBrandKey() {
   if (globalBrandFilter) return resolveBrandKey(globalBrandFilter);
   if (store.brandId) return resolveBrandKey(store.brandId);
@@ -1056,18 +1086,17 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   const appLayout = rootEl?.querySelector('.app-layout');
   if (!appLayout) return;
 
-  const visualSettings = getBrandVisualSettings(brandKey);
   const theme = getBrandTheme(brandKey);
   appLayout.dataset.brandTheme = brandKey;
-  applyInlineCssVariables(appLayout, getBrandCssVars(brandKey, visualSettings));
 
   const sidebarLogo = rootEl.querySelector('.sidebar-logo img');
-  if (sidebarLogo) sidebarLogo.src = visualSettings.logo_url?.trim() || theme.logoWordmark;
+  if (sidebarLogo) sidebarLogo.src = theme.logoWordmark;
 
   const headerIcon = rootEl.querySelector('.header-brand-icon');
   if (headerIcon) headerIcon.src = theme.logoIcon;
 
   const headerChip = rootEl.querySelector('.header-brand-chip');
+<<<<<<< HEAD
   if (headerChip) headerChip.textContent = getGlobalBrandFilterLabel();
 
   const headerBrandFilter = rootEl.querySelector('#global-brand-filter');
@@ -1076,6 +1105,9 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   rootEl.querySelectorAll('.nav-brand-item').forEach((item) => {
     item.classList.toggle('active', item.dataset.brand === globalBrandFilter);
   });
+=======
+  if (headerChip) headerChip.textContent = `Archer ${theme.label}`;
+>>>>>>> parent of 2a9a512 (branding)
 }
 
 function errorHasColumn(error, columnName) {
