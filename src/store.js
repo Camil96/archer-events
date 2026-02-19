@@ -61,6 +61,40 @@ function normalizeBrandLabel(rawBrand) {
   return getBrandLabel(rawBrand || "Invest");
 }
 
+function toEventDateValue(dateInput) {
+  const value = String(dateInput || "").trim();
+  if (!value) return null;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+function sanitizeCatalogEventRow(event) {
+  const startAt = String(event?.start_at || event?.event_date || "").trim();
+  if (!startAt) return null;
+
+  const startStamp = new Date(startAt).getTime();
+  if (!Number.isFinite(startStamp)) return null;
+
+  const endRaw = String(event?.end_at || "").trim();
+  const endStamp = endRaw ? new Date(endRaw).getTime() : NaN;
+  const endAt = Number.isFinite(endStamp) ? endRaw : null;
+
+  const eventDate = toEventDateValue(startAt);
+  if (!eventDate) return null;
+
+  return {
+    title: event.title,
+    brand: normalizeBrandLabel(event.brand),
+    start_at: startAt,
+    event_date: eventDate,
+    end_at: endAt,
+    location: event.location || null,
+    timezone: "Europe/Brussels",
+    capacity: 0,
+    description: event.description || null,
+  };
+}
+
 function toCatalogKey(brand, title, startAt) {
   const cleanBrand = normalizeBrandLabel(brand).toLowerCase();
   const cleanTitle = String(title || "").trim().toLowerCase();
@@ -141,17 +175,12 @@ export async function listEvents(filters = {}) {
 }
 
 export async function importEventCatalog2026() {
-  const rows = EVENT_CATALOG_2026.map((event) => ({
-    title: event.title,
-    brand: normalizeBrandLabel(event.brand),
-    start_at: event.start_at,
-    event_date: event.start_at,
-    end_at: event.end_at || null,
-    location: event.location || null,
-    timezone: "Europe/Brussels",
-    capacity: 0,
-    description: event.description || null,
-  }));
+  const rows = EVENT_CATALOG_2026.map(sanitizeCatalogEventRow).filter(Boolean);
+  const invalidRows = EVENT_CATALOG_2026.length - rows.length;
+
+  if (!rows.length) {
+    return { inserted: 0, skipped: 0, corrected: 0, invalid: invalidRows };
+  }
 
   const { data: existing, error: fetchError } = await supabase
     .from("events")
@@ -172,22 +201,25 @@ export async function importEventCatalog2026() {
   );
   const missingRows = rows.filter((row) => !existingKeys.has(toCatalogKey(row.brand, row.title, row.start_at)));
 
-  if (!missingRows.length) return { inserted: 0, skipped: rows.length, corrected };
+  if (!missingRows.length) {
+    return { inserted: 0, skipped: rows.length + invalidRows, corrected, invalid: invalidRows };
+  }
 
   const { error: insertError } = await supabase.from("events").insert(missingRows);
   if (insertError) throw insertError;
 
   return {
     inserted: missingRows.length,
-    skipped: rows.length - missingRows.length,
+    skipped: rows.length - missingRows.length + invalidRows,
     corrected,
+    invalid: invalidRows,
   };
 }
 
 export async function createEvent(payload) {
   if (!payload.timezone) payload.timezone = 'Europe/Brussels';
-  // Compatibility: Map start_at -> event_date for legacy columns
-  if (payload.start_at) payload.event_date = payload.start_at;
+  if (payload.start_at) payload.event_date = toEventDateValue(payload.start_at);
+  if (!payload.event_date && payload.start_at) payload.event_date = payload.start_at;
 
   const { data, error } = await supabase.from('events').insert([payload]).select().single();
   if (error) throw error;
@@ -195,7 +227,7 @@ export async function createEvent(payload) {
 }
 
 export async function updateEvent(id, payload) {
-  if (payload.start_at) payload.event_date = payload.start_at;
+  if (payload.start_at) payload.event_date = toEventDateValue(payload.start_at) || payload.start_at;
   const { data, error } = await supabase.from('events').update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;

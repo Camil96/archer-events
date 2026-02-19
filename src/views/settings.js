@@ -1,12 +1,35 @@
 import { supabase } from "../supabaseClient.js";
-import { SUPABASE_URL } from "../config.js";
+import {
+  SUPABASE_URL,
+  getBrandTheme,
+  getBrandLogoIcon,
+  getBrandLogoWordmark,
+} from "../config.js";
 import { importEventCatalog2026, store } from "../store.js";
 import { esc, showToast } from "../utils.js";
 
 const BRANDS = [
-  { id: "academy", label: "Archer Academy", fallbackColor: "#4d73ff", fallbackEmail: "events@archer.finance" },
-  { id: "invest", label: "Archer Invest", fallbackColor: "#4d73ff", fallbackEmail: "events@archer.finance" },
-  { id: "fund", label: "Archer Fund", fallbackColor: "#4d73ff", fallbackEmail: "events@archer.finance" },
+  {
+    id: "academy",
+    key: "archer_academy",
+    label: "Archer Academy",
+    fallbackColor: getBrandTheme("archer_academy").color,
+    fallbackEmail: "events@archer.finance",
+  },
+  {
+    id: "invest",
+    key: "archer_invest",
+    label: "Archer Invest",
+    fallbackColor: getBrandTheme("archer_invest").color,
+    fallbackEmail: "events@archer.finance",
+  },
+  {
+    id: "fund",
+    key: "archer_fund",
+    label: "Archer Fund",
+    fallbackColor: getBrandTheme("archer_fund").color,
+    fallbackEmail: "events@archer.finance",
+  },
 ];
 
 const SECTION_DEFS = [
@@ -98,11 +121,18 @@ export async function renderSettings(container) {
 }
 
 function renderShell() {
+  const shellBrandKey = getThemeBrandKey(state.currentBrand);
+  const shellIcon = getBrandLogoIcon(shellBrandKey);
+  const shellWordmark = getBrandLogoWordmark(shellBrandKey);
+
   state.root.innerHTML = `
-    <section class="cp-shell">
+    <section class="cp-shell" data-brand-theme="${esc(shellBrandKey)}">
       <aside class="cp-nav" aria-label="Instellingen secties">
         <div class="cp-nav-head">
-          <img class="cp-brand-logo" src="/archer-wordmark.png" alt="Archer" onerror="this.style.display='none'">
+          <div class="cp-brand-lockup">
+            <img class="cp-brand-icon" src="${esc(shellIcon)}" alt="" aria-hidden="true" onerror="this.style.display='none'">
+            <img class="cp-brand-logo" src="${esc(shellWordmark)}" alt="Archer" onerror="this.style.display='none'">
+          </div>
           <p class="cp-eyebrow">Archer Events</p>
           <h2>Control Panel</h2>
           <p>Hospitality operations setup voor teams, locaties en workflows.</p>
@@ -168,6 +198,7 @@ function bindShellEvents() {
   brandSelect.onchange = async () => {
     state.currentBrand = brandSelect.value;
     store.brandId = state.currentBrand;
+    syncShellTheme();
     await loadSection(state.activeSection);
   };
 
@@ -180,6 +211,19 @@ function syncActiveNavigation() {
   state.root.querySelectorAll(".cp-nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.section === state.activeSection);
   });
+}
+
+function syncShellTheme() {
+  const shell = state.root?.querySelector(".cp-shell");
+  if (!shell) return;
+
+  const brandKey = getThemeBrandKey(state.currentBrand);
+  shell.dataset.brandTheme = brandKey;
+
+  const icon = state.root.querySelector(".cp-brand-icon");
+  const wordmark = state.root.querySelector(".cp-brand-logo");
+  if (icon) icon.src = getBrandLogoIcon(brandKey);
+  if (wordmark) wordmark.src = getBrandLogoWordmark(brandKey);
 }
 
 async function loadSection(sectionId) {
@@ -410,8 +454,9 @@ async function renderOrganisatieSection(container) {
 
     try {
       const result = await importEventCatalog2026();
+      const invalidText = result.invalid ? `, ${result.invalid} ongeldig` : "";
       showToast(
-        `Import voltooid: ${result.inserted} toegevoegd, ${result.skipped} reeds aanwezig, ${result.corrected || 0} gecorrigeerd.`,
+        `Import voltooid: ${result.inserted} toegevoegd, ${result.skipped} overgeslagen, ${result.corrected || 0} gecorrigeerd${invalidText}.`,
         "success"
       );
     } catch (error) {
@@ -1845,6 +1890,10 @@ function renderBrandOptions(selectedBrandId = state.currentBrand) {
   return BRANDS.map(
     (brand) => `<option value="${brand.id}" ${brand.id === selectedBrandId ? "selected" : ""}>${esc(brand.label)}</option>`
   ).join("");
+}
+
+function getThemeBrandKey(brandId) {
+  return BRANDS.find((brand) => brand.id === brandId)?.key || "archer_academy";
 }
 
 function getBrandLabel(brandId) {

@@ -14,7 +14,14 @@ import { renderCalendar } from "./calendar.js";
 import { renderTimeline } from "./timeline.js";
 import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
 import { renderSettings } from "./views/settings.js";
-import { getBrandColor, getBrandLabel } from "./config.js";
+import {
+  getBrandColor,
+  getBrandLabel,
+  getBrandTheme,
+  getBrandLogoIcon,
+  getBrandLogoWordmark,
+  resolveBrandKey,
+} from "./config.js";
 
 // ─── GLOBAL STATE ───────────────────────────────────────────
 let activePage = 'Dashboard';
@@ -53,11 +60,16 @@ export function renderAppShell(root, session) {
 
 async function render() {
   const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
+  const shellBrandKey = resolveShellBrandKey();
+  const shellTheme = getBrandTheme(shellBrandKey);
+  const shellBrandLabel = shellTheme.label;
+  const shellWordmark = getBrandLogoWordmark(shellBrandKey);
+  const shellIcon = getBrandLogoIcon(shellBrandKey);
 
   rootEl.innerHTML = `
-    <div class="app-layout">
+    <div class="app-layout" data-brand-theme="${esc(shellBrandKey)}">
       <aside class="sidebar" id="sidebar">
-        <div class="sidebar-logo"><img src="/archer-wordmark.png" alt="Archer" onerror="this.style.display='none'"></div>
+        <div class="sidebar-logo"><img src="${esc(shellWordmark)}" alt="Archer" onerror="this.style.display='none'"></div>
         
         <div class="nav-section">
           <div class="nav-label">Overzichten</div>
@@ -89,8 +101,9 @@ async function render() {
           <div class="header">
             <div class="header-title-row">
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
-              <img src="/Icon_Blue.png" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
+              <img src="${esc(shellIcon)}" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
               <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
+              <span class="header-brand-chip">Archer ${esc(shellBrandLabel)}</span>
             </div>
             ${isListView || activePage === 'Calendar' ? `
               <div class="header-actions-row">
@@ -254,6 +267,8 @@ function renderFilters(container, initialEvents) {
     filters.search = container.querySelector('#f-search').value;
     if (activePage === 'Dashboard') {
       filters.brand = container.querySelector('#f-brand').value;
+      const dashboardBrandKey = filters.brand ? resolveBrandKey(filters.brand) : 'archer_academy';
+      syncShellBrandDecor(dashboardBrandKey);
     }
     filters.period = container.querySelector('#f-period').value;
 
@@ -313,6 +328,8 @@ function renderEventList(container, events) {
 async function openModal(event) {
   const isEdit = !!event;
   const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
+  const initialBrandKey = resolveBrandKey(initialBrand);
+  const initialTheme = getBrandTheme(initialBrandKey);
   const settingsBrand = normalizeBrandForSettings(initialBrand);
   const selectedBrandLabel = getBrandLabel(initialBrand);
 
@@ -341,10 +358,10 @@ async function openModal(event) {
   ];
 
   overlay.innerHTML = `
-    <div class="modal modal-large event-modal">
+    <div class="modal modal-large event-modal" data-brand-theme="${esc(initialBrandKey)}">
       <div class="modal-header">
         <div class="event-modal-brand">
-          <img src="/Icon_Blue.png" alt="Archer icon" onerror="this.style.display='none'">
+          <img src="${esc(initialTheme.logoIcon)}" alt="Archer icon" onerror="this.style.display='none'">
           <div>
             <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
             <p class="event-modal-subtitle">Hospitality event composer</p>
@@ -424,6 +441,8 @@ async function openModal(event) {
   const titleEl = overlay.querySelector('#m-title');
   const titlePresetEl = overlay.querySelector('#m-title-preset');
   const brandEl = overlay.querySelector('#m-brand');
+  const modalEl = overlay.querySelector('.event-modal');
+  const modalIconEl = overlay.querySelector('.event-modal-brand img');
   const locationTypeEl = overlay.querySelector('#m-loc-type');
   const locationPresetEl = overlay.querySelector('#m-loc-preset');
   const locationEl = overlay.querySelector('#m-loc');
@@ -432,6 +451,13 @@ async function openModal(event) {
 
   let modalSettingsRows = settingsRows || [];
   let activeLocationPresets = [];
+
+  const syncModalTheme = () => {
+    const brandKey = resolveBrandKey(brandEl.value);
+    const theme = getBrandTheme(brandKey);
+    modalEl.dataset.brandTheme = brandKey;
+    if (modalIconEl) modalIconEl.src = theme.logoIcon;
+  };
 
   const rebuildTitlePresets = () => {
     const titlesFromSettings = parseCsvSetting(getModalSettingValue(modalSettingsRows, 'event_title_presets'));
@@ -483,6 +509,7 @@ async function openModal(event) {
   rebuildTitlePresets();
   rebuildLocationPresets();
   syncLocationUi();
+  syncModalTheme();
 
   titlePresetEl.onchange = () => {
     if (titlePresetEl.value) titleEl.value = titlePresetEl.value;
@@ -503,6 +530,7 @@ async function openModal(event) {
   };
 
   brandEl.onchange = async () => {
+    syncModalTheme();
     modalSettingsRows = await fetchEventModalSettings(normalizeBrandForSettings(brandEl.value));
     rebuildTitlePresets();
     rebuildLocationPresets();
@@ -539,6 +567,14 @@ async function openModal(event) {
     };
     if (!payload.title) {
       showToast('Titel is verplicht.', 'error');
+      return;
+    }
+    if (!payload.start_at) {
+      showToast('Start datum & tijd is verplicht.', 'error');
+      return;
+    }
+    if (payload.end_at && new Date(payload.end_at).getTime() < new Date(payload.start_at).getTime()) {
+      showToast('Eind datum & tijd moet na start datum & tijd liggen.', 'error');
       return;
     }
     if (overlay.querySelector('#m-loc-type').value === 'online' && !String(payload.location_url || '').trim()) {
@@ -773,6 +809,35 @@ function inferLocationType(location, locationUrl) {
   const onlineSignal = ['zoom', 'teams', 'meet', 'webex', 'online', 'virtual'];
   const isOnline = onlineSignal.some((signal) => loc.includes(signal) || url.includes(signal));
   return isOnline ? 'online' : 'physical';
+}
+
+function resolveShellBrandKey() {
+  const map = {
+    Academy: 'archer_academy',
+    Invest: 'archer_invest',
+    Fund: 'archer_fund',
+  };
+
+  if (map[activePage]) return map[activePage];
+  if (activePage === 'Dashboard' && map[filters.brand]) return map[filters.brand];
+  return 'archer_academy';
+}
+
+function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
+  const appLayout = rootEl?.querySelector('.app-layout');
+  if (!appLayout) return;
+
+  const theme = getBrandTheme(brandKey);
+  appLayout.dataset.brandTheme = brandKey;
+
+  const sidebarLogo = rootEl.querySelector('.sidebar-logo img');
+  if (sidebarLogo) sidebarLogo.src = theme.logoWordmark;
+
+  const headerIcon = rootEl.querySelector('.header-brand-icon');
+  if (headerIcon) headerIcon.src = theme.logoIcon;
+
+  const headerChip = rootEl.querySelector('.header-brand-chip');
+  if (headerChip) headerChip.textContent = `Archer ${theme.label}`;
 }
 
 function errorHasColumn(error, columnName) {
