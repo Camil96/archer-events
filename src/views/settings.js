@@ -28,10 +28,11 @@ const NOTIFICATION_TRIGGERS = [
 let activeSection = "organisatie";
 
 // ─── ENTRY POINT ─────────────────────────────────────────────────────────────
-export async function renderSettings() {
-    const body = document.getElementById("page-body");
+export async function renderSettings(container) {
+    const body = container || document.getElementById("page-body");
     const actions = document.getElementById("page-actions");
-    actions.innerHTML = "";
+    if (actions) actions.innerHTML = "";
+    if (!body) throw new Error("Settings container niet gevonden.");
 
     body.innerHTML = `
     <div class="settings-wrap">

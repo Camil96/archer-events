@@ -1,5 +1,9 @@
 import { supabase } from "./supabaseClient.js";
 
+export const store = {
+  brandId: "academy",
+};
+
 /* ─── EVENTS ─── */
 export async function listEvents(filters = {}) {
   let query = supabase
