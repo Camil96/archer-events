@@ -18,6 +18,16 @@
   --brand-shell-end: #edf3ff;
   --focus-ring: rgba(var(--brand-accent-rgb), 0.22);
 
+  --cp-accent: var(--brand-accent);
+  --cp-accent-hover: var(--brand-accent-hover);
+  --cp-accent-soft: var(--brand-accent-soft);
+  --cp-border: var(--brand-border);
+  --cp-border-strong: var(--brand-border-strong);
+  --cp-card-border: var(--brand-border-soft);
+  --cp-text: var(--brand-text-heading);
+  --cp-muted: var(--brand-text-muted);
+  --cp-accent-rgb: var(--brand-accent-rgb);
+
   --primary: var(--brand-accent);
   --primary-hover: var(--brand-accent-hover);
   --primary-vlight: var(--brand-accent-soft);
@@ -57,6 +67,7 @@
 
 .app-layout[data-brand-theme="archer_academy"],
 .event-modal[data-brand-theme="archer_academy"],
+.cp-modal-overlay[data-brand-theme="archer_academy"],
 .cp-shell[data-brand-theme="archer_academy"] {
   --brand-accent: #4d73ff;
   --brand-accent-hover: #3d66ff;
@@ -79,6 +90,7 @@
 
 .app-layout[data-brand-theme="archer_invest"],
 .event-modal[data-brand-theme="archer_invest"],
+.cp-modal-overlay[data-brand-theme="archer_invest"],
 .cp-shell[data-brand-theme="archer_invest"] {
   --brand-accent: #2d50ef;
   --brand-accent-hover: #2140d8;
@@ -101,6 +113,7 @@
 
 .app-layout[data-brand-theme="archer_fund"],
 .event-modal[data-brand-theme="archer_fund"],
+.cp-modal-overlay[data-brand-theme="archer_fund"],
 .cp-shell[data-brand-theme="archer_fund"] {
   --brand-accent: #1032cf;
   --brand-accent-hover: #0b27aa;
@@ -1981,10 +1994,18 @@ textarea:focus-visible {
   gap: 8px;
 }
 
+.cp-inline-input-row-price {
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+
 .cp-inline-input-row input[type="color"] {
   padding: 3px;
   border-radius: 10px;
   cursor: pointer;
+}
+
+.cp-hidden {
+  display: none !important;
 }
 
 .cp-chip-check-wrap {
@@ -2057,6 +2078,14 @@ textarea:focus-visible {
 
 .cp-btn-primary:hover {
   background: var(--cp-accent-hover);
+}
+
+.cp-btn-primary:disabled {
+  background: var(--cp-accent);
+  color: #fff;
+  opacity: 0.75;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .cp-btn-ghost {

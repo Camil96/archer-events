@@ -333,11 +333,12 @@ async function openModal(event) {
   const settingsBrand = normalizeBrandForSettings(initialBrand);
   const selectedBrandLabel = getBrandLabel(initialBrand);
 
-  const [availableUsers, titleRows, locationRows, settingsRows] = await Promise.all([
+  const [availableUsers, titleRows, locationRows, settingsRows, cateringRows] = await Promise.all([
     listAvailableUsers().catch(() => []),
     fetchEventTitleRows(),
     fetchEventLocationRows(),
     fetchEventModalSettings(settingsBrand),
+    fetchCateringOptionRows(),
   ]);
 
   const frequentTitles = getFrequentEventTitles(titleRows);
@@ -415,6 +416,10 @@ async function openModal(event) {
             <div><label>Maximale capaciteit</label><input type="number" id="m-cap" value="${event?.capacity || ''}"></div>
             <div><label>Verwacht aantal gasten</label><input type="number" id="m-exp" value="${event?.expected_attendance || ''}"></div>
           </div>
+          <div class="grid-2" style="margin-top:16px;">
+            <div><label>Catering optie</label><select id="m-catering"></select></div>
+            <div><label>Indicatieve cateringkost</label><input id="m-catering-estimate" type="text" value="-" readonly></div>
+          </div>
           <div style="margin-top:16px;"><label>Omschrijving (extern)</label><textarea id="m-desc" rows="3">${esc(event?.description || '')}</textarea></div>
           <div style="margin-top:16px;"><label>Interne notities</label><textarea id="m-notes" rows="2">${esc(event?.notes_internal || '')}</textarea></div>
         </div>
@@ -448,9 +453,14 @@ async function openModal(event) {
   const locationEl = overlay.querySelector('#m-loc');
   const locationUrlEl = overlay.querySelector('#m-loc-url');
   const timezoneEl = overlay.querySelector('#m-tz');
+  const capacityEl = overlay.querySelector('#m-cap');
+  const expectedEl = overlay.querySelector('#m-exp');
+  const cateringEl = overlay.querySelector('#m-catering');
+  const cateringEstimateEl = overlay.querySelector('#m-catering-estimate');
 
   let modalSettingsRows = settingsRows || [];
   let activeLocationPresets = [];
+  let activeCateringOptions = [];
 
   const syncModalTheme = () => {
     const brandKey = resolveBrandKey(brandEl.value);
@@ -494,6 +504,81 @@ async function openModal(event) {
     if (matchIdx >= 0) locationPresetEl.value = String(matchIdx);
   };
 
+  const getCateringPriceAmount = (row) => {
+    const raw = row?.price_amount ?? row?.price ?? row?.unit_price;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const getCateringCurrency = (row) => {
+    const currency = String(row?.price_currency || row?.currency || 'EUR').trim().toUpperCase();
+    return currency || 'EUR';
+  };
+
+  const formatCurrencyValue = (amount, currency = 'EUR') => {
+    const numeric = Number.parseFloat(amount);
+    if (!Number.isFinite(numeric)) return '-';
+    try {
+      return new Intl.NumberFormat('nl-BE', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(numeric);
+    } catch {
+      return `${numeric.toFixed(2)} ${currency || 'EUR'}`;
+    }
+  };
+
+  const syncCateringEstimate = () => {
+    const selectedName = cateringEl.value;
+    const selectedOption = activeCateringOptions.find((entry) => String(entry.name || '') === selectedName);
+    const priceAmount = getCateringPriceAmount(selectedOption);
+    const currency = getCateringCurrency(selectedOption);
+    const expected = Number.parseInt(expectedEl.value || '0', 10);
+    const capacity = Number.parseInt(capacityEl.value || '0', 10);
+    const attendeeCount = Number.isFinite(expected) && expected > 0 ? expected : (Number.isFinite(capacity) ? Math.max(capacity, 0) : 0);
+
+    if (!selectedOption || priceAmount === null || attendeeCount <= 0) {
+      cateringEstimateEl.value = '-';
+      return;
+    }
+
+    const estimate = attendeeCount * priceAmount;
+    cateringEstimateEl.value = `${formatCurrencyValue(estimate, currency)} (${attendeeCount} gasten)`;
+  };
+
+  const rebuildCateringOptions = () => {
+    const brandForScope = normalizeBrandForSettings(brandEl.value);
+
+    activeCateringOptions = (cateringRows || [])
+      .filter((row) => row?.is_active !== false)
+      .filter((row) => {
+        if (!row?.brand) return true;
+        return normalizeBrandForSettings(row.brand) === brandForScope;
+      })
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'nl'));
+
+    const currentValue = String(cateringEl.value || event?.catering || '').trim();
+    const hasCurrentValue = currentValue && activeCateringOptions.some((row) => String(row?.name || '') === currentValue);
+
+    cateringEl.innerHTML = `
+      <option value="">Geen catering</option>
+      ${activeCateringOptions.map((row) => {
+        const priceAmount = getCateringPriceAmount(row);
+        const priceCurrency = getCateringCurrency(row);
+        const supplier = String(row?.supplier_name || row?.supplier || '').trim();
+        const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
+        const supplierLabel = supplier ? ` (${supplier})` : '';
+        const selected = String(row?.name || '') === currentValue ? 'selected' : '';
+        return `<option value="${esc(row?.name || '')}" ${selected}>${esc(`${row?.name || '-'}${priceLabel}${supplierLabel}`)}</option>`;
+      }).join('')}
+      ${currentValue && !hasCurrentValue ? `<option value="${esc(currentValue)}" selected>${esc(currentValue)}</option>` : ''}
+    `;
+
+    syncCateringEstimate();
+  };
+
   const syncLocationUi = () => {
     if (locationTypeEl.value === 'online') {
       locationUrlEl.placeholder = 'https://zoom.us/j/...';
@@ -508,8 +593,10 @@ async function openModal(event) {
 
   rebuildTitlePresets();
   rebuildLocationPresets();
+  rebuildCateringOptions();
   syncLocationUi();
   syncModalTheme();
+  syncCateringEstimate();
 
   titlePresetEl.onchange = () => {
     if (titlePresetEl.value) titleEl.value = titlePresetEl.value;
@@ -529,11 +616,18 @@ async function openModal(event) {
     if (preset.url && !locationUrlEl.value.trim()) locationUrlEl.value = preset.url;
   };
 
+  cateringEl.onchange = () => {
+    syncCateringEstimate();
+  };
+  capacityEl.oninput = syncCateringEstimate;
+  expectedEl.oninput = syncCateringEstimate;
+
   brandEl.onchange = async () => {
     syncModalTheme();
     modalSettingsRows = await fetchEventModalSettings(normalizeBrandForSettings(brandEl.value));
     rebuildTitlePresets();
     rebuildLocationPresets();
+    rebuildCateringOptions();
   };
 
   overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
@@ -561,6 +655,7 @@ async function openModal(event) {
       location_url: overlay.querySelector('#m-loc-url').value,
       capacity: parseInt(overlay.querySelector('#m-cap').value) || 0,
       expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
+      catering: overlay.querySelector('#m-catering').value || null,
       timezone: overlay.querySelector('#m-tz').value,
       description: overlay.querySelector('#m-desc').value,
       notes_internal: overlay.querySelector('#m-notes').value,
@@ -673,6 +768,31 @@ async function fetchEventModalSettings(brandId) {
   } catch {
     return [];
   }
+}
+
+async function fetchCateringOptionRows() {
+  const selectVariants = [
+    'id,name,brand,is_active,price_amount,price,price_currency,currency,supplier_name,supplier',
+    'id,name,brand,is_active,price_amount,price,price_currency,currency,supplier',
+    'id,name,brand,is_active,price_amount,price',
+    'id,name,brand,is_active',
+    'id,name,is_active',
+    'id,name',
+  ];
+
+  for (const columns of selectVariants) {
+    try {
+      const { data, error } = await supabase.from('catering_options').select(columns).order('name');
+      if (!error) return data || [];
+
+      const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+      if (message.includes('relation') && message.includes('catering_options')) return [];
+    } catch {
+      // Try next variant.
+    }
+  }
+
+  return [];
 }
 
 function getModalSettingValue(settingsRows, key) {

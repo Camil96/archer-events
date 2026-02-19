@@ -1458,18 +1458,13 @@ async function renderNotificatiesSection(container) {
 }
 
 async function renderCateringSection(container) {
-  const [options, eventTypes] = await Promise.all([
-    fetchRows("catering_options", { brandScoped: true, orderBy: "name" }),
-    fetchRows("event_types", { brandScoped: true, orderBy: "name" }).catch(() => []),
-  ]);
-
-  const eventTypeById = Object.fromEntries((eventTypes || []).map((eventType) => [eventType.id, eventType]));
+  const options = await fetchRows("catering_options", { brandScoped: true, orderBy: "name" });
 
   container.innerHTML = `
     ${renderSectionHeader({
       title: "Catering opties",
       description:
-        "Centrale cateringcatalogus voor events. Definieer welke opties passen bij specifieke eventtypes.",
+        "Centrale cateringcatalogus voor events. Beheer prijs en leverancier zodat eventteams het financiele plaatje volledig kunnen opvolgen.",
       actions: `<button class="cp-btn cp-btn-primary" id="cp-add-catering" type="button">+ Optie toevoegen</button>`,
     })}
 
@@ -1481,7 +1476,8 @@ async function renderCateringSection(container) {
             <tr>
               <th>Naam</th>
               <th>Beschrijving</th>
-              <th>Geschikt voor event type</th>
+              <th>Prijs</th>
+              <th>Leverancier</th>
               <th>Status</th>
               <th class="cp-ta-right">Acties</th>
             </tr>
@@ -1489,16 +1485,15 @@ async function renderCateringSection(container) {
           <tbody>
             ${options
               .map((option) => {
-                const eventTypeLabel =
-                  option.event_type ||
-                  option.default_event_type ||
-                  eventTypeById[option.event_type_id]?.name ||
-                  "-";
+                const priceAmount = getCateringPriceAmount(option);
+                const priceCurrency = getCateringCurrency(option);
+                const supplierName = getCateringSupplier(option) || "-";
                 return `
                   <tr>
                     <td><strong>${esc(option.name || "-")}</strong></td>
                     <td>${esc(option.description || "-")}</td>
-                    <td>${esc(eventTypeLabel)}</td>
+                    <td>${priceAmount === null ? "-" : esc(formatCurrencyValue(priceAmount, priceCurrency))}</td>
+                    <td>${esc(supplierName)}</td>
                     <td>${renderStatusBadge(option.is_active !== false)}</td>
                     <td class="cp-ta-right">
                       <div class="cp-row-actions cp-row-actions-end">
@@ -1519,12 +1514,12 @@ async function renderCateringSection(container) {
       : renderEmptyState("Geen cateringopties", "Voeg catering opties toe zodat planners sneller kunnen kiezen.")}
   `;
 
-  container.querySelector("#cp-add-catering").onclick = () => openCateringModal(null, eventTypes);
+  container.querySelector("#cp-add-catering").onclick = () => openCateringModal(null);
 
   container.querySelectorAll("[data-action='edit-catering']").forEach((btn) => {
     btn.onclick = () => {
       const option = options.find((entry) => String(entry.id) === String(btn.dataset.id));
-      if (option) openCateringModal(option, eventTypes);
+      if (option) openCateringModal(option);
     };
   });
 
@@ -1549,10 +1544,15 @@ async function renderCateringSection(container) {
   });
 }
 
-function openCateringModal(option, eventTypes = []) {
+function openCateringModal(option) {
   const isEdit = !!option;
+  const priceAmount = getCateringPriceAmount(option);
+  const currency = getCateringCurrency(option);
+  const supplierName = getCateringSupplier(option);
+  const supplierPreset = supplierName.toLowerCase() === "fuel" ? "Fuel" : supplierName ? "Ander" : "Fuel";
+  const currencyOptions = [...new Set(["EUR", "USD", "GBP", currency].filter(Boolean))];
 
-  openModal({
+  const overlay = openModal({
     title: isEdit ? "Catering optie bewerken" : "Nieuwe catering optie",
     description: "Gebruik vaste opties voor consistente hospitality service levels.",
     saveLabel: isEdit ? "Opslaan" : "Aanmaken",
@@ -1571,27 +1571,31 @@ function openCateringModal(option, eventTypes = []) {
         </label>
 
         <label class="cp-field">
-          <span>Geschikt event type</span>
-          <select id="cp-catering-event-type">
-            <option value="">Geen specifiek event type</option>
-            ${eventTypes
-              .map((eventType) => {
-                const selected =
-                  String(option?.event_type_id || "") === String(eventType.id) ||
-                  String(option?.event_type || "") === String(eventType.name || "");
-                return `<option value="${esc(eventType.id)}" data-name="${esc(eventType.name || "")}" ${
-                  selected ? "selected" : ""
-                }>${esc(eventType.name || "-")}</option>`;
-              })
-              .join("")}
-          </select>
+          <span>Prijs</span>
+          <div class="cp-inline-input-row cp-inline-input-row-price">
+            <input id="cp-catering-price" type="number" min="0" step="0.01" value="${priceAmount ?? ""}" placeholder="0.00" />
+            <select id="cp-catering-currency">
+              ${currencyOptions.map((code) => `<option value="${code}" ${currency === code ? "selected" : ""}>${code}</option>`).join("")}
+            </select>
+          </div>
         </label>
 
         <label class="cp-field">
-          <span>Fallback event type naam</span>
-          <input id="cp-catering-event-type-name" type="text" value="${esc(
-            option?.event_type || option?.default_event_type || ""
-          )}" placeholder="Masterclass" />
+          <span>Leverancier</span>
+          <select id="cp-catering-supplier">
+            <option value="Fuel" ${supplierPreset === "Fuel" ? "selected" : ""}>Fuel</option>
+            <option value="Ander" ${supplierPreset === "Ander" ? "selected" : ""}>Ander</option>
+          </select>
+        </label>
+
+        <label class="cp-field cp-col-span-2 ${supplierPreset === "Ander" ? "" : "cp-hidden"}" id="cp-catering-supplier-other-wrap">
+          <span>Leverancier (ander)</span>
+          <input
+            id="cp-catering-supplier-other"
+            type="text"
+            value="${esc(supplierPreset === "Ander" ? supplierName : "")}"
+            placeholder="Naam leverancier"
+          />
         </label>
 
         <label class="cp-field cp-toggle-field cp-col-span-2">
@@ -1607,16 +1611,32 @@ function openCateringModal(option, eventTypes = []) {
         return false;
       }
 
-      const eventTypeSelect = overlay.querySelector("#cp-catering-event-type");
-      const selectedOption = eventTypeSelect.options[eventTypeSelect.selectedIndex];
+      const rawPrice = overlay.querySelector("#cp-catering-price").value.trim();
+      const parsedPrice = rawPrice === "" ? null : Number.parseFloat(rawPrice);
+      if (rawPrice && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) {
+        showToast("Prijs moet een geldig positief bedrag zijn.", "error");
+        return false;
+      }
+
+      const supplierPresetValue = overlay.querySelector("#cp-catering-supplier").value;
+      const supplierOther = overlay.querySelector("#cp-catering-supplier-other")?.value.trim() || "";
+      if (supplierPresetValue === "Ander" && !supplierOther) {
+        showToast("Geef een leverancier in bij 'Ander'.", "error");
+        return false;
+      }
+      const supplierResolved = supplierPresetValue === "Ander" ? supplierOther : "Fuel";
+      const selectedCurrency = overlay.querySelector("#cp-catering-currency").value || "EUR";
 
       const payload = {
         brand: state.currentBrand,
         name,
         description: overlay.querySelector("#cp-catering-description").value.trim(),
-        event_type_id: eventTypeSelect.value || null,
-        event_type:
-          overlay.querySelector("#cp-catering-event-type-name").value.trim() || selectedOption?.dataset?.name || "",
+        price_amount: parsedPrice,
+        price: parsedPrice,
+        price_currency: selectedCurrency,
+        currency: selectedCurrency,
+        supplier_name: supplierResolved,
+        supplier: supplierResolved,
         is_active: overlay.querySelector("#cp-catering-active").checked,
       };
 
@@ -1624,7 +1644,7 @@ function openCateringModal(option, eventTypes = []) {
         table: "catering_options",
         id: option?.id,
         payload,
-        optionalColumns: ["brand", "event_type_id", "event_type", "is_active"],
+        optionalColumns: ["brand", "price_amount", "price", "price_currency", "currency", "supplier_name", "supplier", "is_active"],
       });
 
       if (error) {
@@ -1637,6 +1657,15 @@ function openCateringModal(option, eventTypes = []) {
       return true;
     },
   });
+
+  const supplierSelect = overlay.querySelector("#cp-catering-supplier");
+  const supplierOtherWrap = overlay.querySelector("#cp-catering-supplier-other-wrap");
+  const syncSupplierField = () => {
+    const isOther = supplierSelect.value === "Ander";
+    supplierOtherWrap.classList.toggle("cp-hidden", !isOther);
+  };
+  supplierSelect.onchange = syncSupplierField;
+  syncSupplierField();
 }
 
 async function renderExportSection(container) {
@@ -1916,6 +1945,12 @@ function parseNullableInt(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function parseNullableFloat(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function ensureArray(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === "string") return value.split(",").map((part) => part.trim()).filter(Boolean);
@@ -1929,6 +1964,36 @@ function splitCsv(value) {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function getCateringPriceAmount(option) {
+  if (!option) return null;
+  return parseNullableFloat(option.price_amount ?? option.price ?? option.unit_price);
+}
+
+function getCateringCurrency(option) {
+  const currency = String(option?.price_currency || option?.currency || "EUR").trim().toUpperCase();
+  return currency || "EUR";
+}
+
+function getCateringSupplier(option) {
+  return String(option?.supplier_name || option?.supplier || "").trim();
+}
+
+function formatCurrencyValue(amount, currency = "EUR") {
+  const numeric = Number.parseFloat(amount);
+  if (!Number.isFinite(numeric)) return "-";
+
+  try {
+    return new Intl.NumberFormat("nl-BE", {
+      style: "currency",
+      currency: currency || "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${numeric.toFixed(2)} ${currency || "EUR"}`;
+  }
 }
 
 function formatDateCell(value) {
@@ -2052,6 +2117,7 @@ function errorHasColumn(error, columnName) {
 function openModal({ title, description = "", body, saveLabel = "Opslaan", onSave }) {
   const overlay = document.createElement("div");
   overlay.className = "cp-modal-overlay";
+  overlay.dataset.brandTheme = getThemeBrandKey(state.currentBrand);
 
   overlay.innerHTML = `
     <div class="cp-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
