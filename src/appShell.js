@@ -79,6 +79,7 @@ async function render() {
           <button id="logout" class="btn-ghost logout-btn">↪ Uitloggen</button>
         </div>
       </aside>
+      <button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="Sluit menu"></button>
 
       <main class="main-content">
         <div class="wrap">
@@ -98,8 +99,31 @@ async function render() {
       </main>
     </div>`;
 
+  const appLayout = rootEl.querySelector('.app-layout');
+  const sidebarEl = rootEl.querySelector('#sidebar');
+  const sidebarBackdropEl = rootEl.querySelector('#sidebar-backdrop');
+  const mainContentEl = rootEl.querySelector('.main-content');
+
+  const closeSidebar = () => {
+    sidebarEl.classList.remove('sidebar-open');
+    appLayout.classList.remove('sidebar-open');
+    sidebarBackdropEl.classList.remove('sidebar-backdrop-open');
+  };
+
+  const openSidebar = () => {
+    sidebarEl.classList.add('sidebar-open');
+    appLayout.classList.add('sidebar-open');
+    sidebarBackdropEl.classList.add('sidebar-backdrop-open');
+  };
+
+  const toggleSidebar = () => {
+    if (sidebarEl.classList.contains('sidebar-open')) closeSidebar();
+    else openSidebar();
+  };
+
   // Navigation handlers
   rootEl.querySelectorAll('.nav-item').forEach(el => el.onclick = () => {
+    closeSidebar();
     activePage = el.dataset.page;
     filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
     render();
@@ -112,9 +136,25 @@ async function render() {
   };
 
   // Sidebar toggle
-  rootEl.querySelector('#sidebar-toggle').onclick = () => {
-    document.getElementById('sidebar').classList.toggle('sidebar-open');
+  rootEl.querySelector('#sidebar-toggle').onclick = (e) => {
+    e.stopPropagation();
+    toggleSidebar();
   };
+  sidebarBackdropEl.onclick = closeSidebar;
+  sidebarBackdropEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    closeSidebar();
+  });
+
+  // Sluit menu bij interactie rechts van de sidebar (ook context menu / right click).
+  mainContentEl.addEventListener('contextmenu', (e) => {
+    if (!sidebarEl.classList.contains('sidebar-open')) return;
+    e.preventDefault();
+    closeSidebar();
+  });
+  mainContentEl.addEventListener('click', () => {
+    if (sidebarEl.classList.contains('sidebar-open')) closeSidebar();
+  });
 
   // Add event
   const addBtn = rootEl.querySelector('#add-event');

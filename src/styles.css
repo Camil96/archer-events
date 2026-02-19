@@ -89,6 +89,10 @@ textarea {
   z-index: 1001;
 }
 
+.sidebar-backdrop {
+  display: none;
+}
+
 .main-content {
   flex: 1;
   overflow-y: auto;
@@ -426,6 +430,10 @@ h1 {
   background: linear-gradient(90deg, #010310 0%, #4d73ff 50%, #010310 100%);
 }
 
+.event-modal #tab-details > .grid-2 {
+  gap: 14px;
+}
+
 .modal-body {
   padding: 32px;
   flex: 1;
@@ -760,11 +768,28 @@ textarea:focus {
     bottom: 0;
     transform: translateX(-100%);
     width: 260px;
+    z-index: 2100;
   }
 
   .sidebar-open {
     transform: translateX(0);
     box-shadow: 20px 0 50px rgba(0, 0, 0, 0.1);
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 20, 40, 0.36);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 2050;
+  }
+
+  .sidebar-backdrop.sidebar-backdrop-open {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .sidebar-toggle {
@@ -836,6 +861,32 @@ textarea:focus {
     padding: 16px;
   }
 
+  .event-modal .modal-header {
+    border-bottom: 1px solid #dfe7f6;
+  }
+
+  .event-modal .event-modal-brand {
+    gap: 10px;
+  }
+
+  .event-modal .event-modal-brand img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .event-modal #tab-details > .grid-2 {
+    grid-template-columns: 1fr !important;
+    margin-top: 12px !important;
+  }
+
+  .event-modal #tab-details > .grid-2:first-child {
+    margin-top: 0 !important;
+  }
+
+  .event-modal #tab-details > div[style*="margin-top:16px"] {
+    margin-top: 12px !important;
+  }
+
   .tabs {
     position: static;
     top: auto;
@@ -855,6 +906,7 @@ textarea:focus {
   .modal-footer {
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
     flex-wrap: wrap;
+    gap: 8px;
   }
 
   .modal-footer .btn-primary,
@@ -2170,6 +2222,37 @@ textarea:focus {
 }
 
 @media (max-width: 820px) {
+  .cp-shell {
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .cp-nav {
+    padding: 14px 12px;
+    gap: 12px;
+  }
+
+  .cp-nav-head h2 {
+    font-size: 1.12rem;
+  }
+
+  .cp-nav-head p {
+    font-size: 0.82rem;
+  }
+
+  .cp-nav-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .cp-nav-item {
+    min-width: 0;
+    width: 100%;
+  }
+
   .cp-main-head,
   .cp-section-content {
     padding-left: 16px;
@@ -2178,10 +2261,21 @@ textarea:focus {
 
   .cp-main-head {
     flex-direction: column;
+    padding-top: 16px;
+    padding-bottom: 14px;
+  }
+
+  .cp-main-head h1 {
+    font-size: clamp(1.15rem, 6vw, 1.42rem);
+    line-height: 1.24;
+    overflow-wrap: anywhere;
   }
 
   .cp-main-head-actions {
     width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .cp-main-head-actions .cp-inline-field,
@@ -2215,8 +2309,8 @@ textarea:focus {
 }
 
 @media (max-width: 640px) {
-  .cp-nav-item {
-    min-width: 185px;
+  .cp-nav {
+    padding: 12px 10px;
   }
 
   .cp-card,
@@ -2234,7 +2328,7 @@ textarea:focus {
   }
 
   .cp-table {
-    min-width: 620px;
+    min-width: 560px;
   }
 
   .cp-modal-head,
@@ -2251,6 +2345,14 @@ textarea:focus {
 
   .cp-modal-foot .cp-btn {
     flex: 1 1 100%;
+  }
+
+  .cp-section-head-main h2 {
+    font-size: 1.16rem;
+  }
+
+  .cp-section-head-main p {
+    font-size: 0.85rem;
   }
 }
 
