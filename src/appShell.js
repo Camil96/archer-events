@@ -28,14 +28,8 @@ let activePage = 'Dashboard';
 let rootEl;
 let filters = { brand: '', search: '', period: '' };
 let catalogImportStarted = false;
-<<<<<<< HEAD
 let brandVisualSettingsById = {};
-<<<<<<< HEAD
-let globalBrandFilter = getBrandDbValue(store.brandId || "Academy");
-=======
->>>>>>> parent of 2a9a512 (branding)
-=======
->>>>>>> parent of bdc6f8e (branding extra)
+let globalBrandFilter = "Academy";
 
 const DEFAULT_EVENT_TITLE_PRESETS = [
   'Performance sessie',
@@ -68,7 +62,6 @@ export function renderAppShell(root, session) {
 }
 
 async function render() {
-<<<<<<< HEAD
   brandVisualSettingsById = await fetchBrandVisualSettings();
   const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
   const shellBrandKey = resolveShellBrandKey();
@@ -81,14 +74,6 @@ async function render() {
   const investNavLabel = getBrandFilterOptionLabel('archer_invest');
   const fundNavLabel = getBrandFilterOptionLabel('archer_fund');
   const pageTitle = getActivePageTitle();
-=======
-  const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
-  const shellBrandKey = resolveShellBrandKey();
-  const shellTheme = getBrandTheme(shellBrandKey);
-  const shellBrandLabel = shellTheme.label;
-  const shellWordmark = getBrandLogoWordmark(shellBrandKey);
-  const shellIcon = getBrandLogoIcon(shellBrandKey);
->>>>>>> parent of 2a9a512 (branding)
 
   rootEl.innerHTML = `
     <div class="app-layout" data-brand-theme="${esc(shellBrandKey)}">
@@ -104,21 +89,9 @@ async function render() {
 
         <div class="nav-section">
           <div class="nav-label">Contexten</div>
-<<<<<<< HEAD
-<<<<<<< HEAD
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Academy' ? 'active' : ''}" data-brand="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Invest' ? 'active' : ''}" data-brand="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Fund' ? 'active' : ''}" data-brand="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
-=======
-          <a class="nav-item ${activePage === 'Academy' ? 'active' : ''}" data-page="Academy"><span class="nav-icon">🎓</span>Academy</a>
-          <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>Invest</a>
-          <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>Fund</a>
->>>>>>> parent of 2a9a512 (branding)
-=======
-          <a class="nav-item ${activePage === 'Academy' ? 'active' : ''}" data-page="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
-          <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
-          <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
->>>>>>> parent of bdc6f8e (branding extra)
         </div>
 
         <div class="nav-section">
@@ -138,8 +111,8 @@ async function render() {
             <div class="header-title-row">
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
               <img src="${esc(shellIcon)}" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
-              <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
-              <span class="header-brand-chip">Archer ${esc(shellBrandLabel)}</span>
+              <h1>${pageTitle}</h1>
+              <span class="header-brand-chip">Archer ${esc(shellBrandDisplay)}</span>
             </div>
             ${isListView || activePage === 'Calendar' ? `
               <div class="header-actions-row">
@@ -177,8 +150,16 @@ async function render() {
   // Navigation handlers
   rootEl.querySelectorAll('.nav-item').forEach(el => el.onclick = () => {
     closeSidebar();
-    activePage = el.dataset.page;
-    filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
+    if(el.dataset.page) {
+        activePage = el.dataset.page;
+        filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
+    } else if (el.dataset.brand) {
+        globalBrandFilter = el.dataset.brand;
+        if (!['Dashboard', 'Calendar', 'Timeline', 'Admin'].includes(activePage)) {
+            activePage = globalBrandFilter;
+            filters.brand = globalBrandFilter;
+        }
+    }
     render();
   });
 
@@ -199,7 +180,6 @@ async function render() {
     closeSidebar();
   });
 
-  // Sluit menu bij interactie rechts van de sidebar (ook context menu / right click).
   mainContentEl.addEventListener('contextmenu', (e) => {
     if (!sidebarEl.classList.contains('sidebar-open')) return;
     e.preventDefault();
@@ -209,11 +189,9 @@ async function render() {
     if (sidebarEl.classList.contains('sidebar-open')) closeSidebar();
   });
 
-  // Add event
   const addBtn = rootEl.querySelector('#add-event');
   if (addBtn) addBtn.onclick = () => openModal(null);
 
-  // Export CSV
   const exportBtn = rootEl.querySelector('#export-csv');
   if (exportBtn) exportBtn.onclick = async () => {
     const events = await listEvents(filters);
@@ -239,23 +217,12 @@ async function loadContent() {
     } else if (activePage === 'Calendar') {
       const events = await listEvents();
       renderCalendar(container, events, (ev) => openModal(ev));
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
     } else if (activePage === 'Timeline') {
       const events = await listEvents();
       renderTimeline(container, events, (ev) => openModal(ev));
-    } else if (activePage === 'Dashboard') {
-      await renderDashboard(container);
->>>>>>> parent of 2a9a512 (branding)
     } else {
-=======
-    } else if (activePage === 'Dashboard') {
->>>>>>> parent of bdc6f8e (branding extra)
-      await renderDashboard(container);
-    } else {
-      // Brand pages
-      filters.brand = activePage;
+      filters.brand = activePage === 'Dashboard' ? '' : activePage;
+      if(globalBrandFilter && activePage !== 'Dashboard') filters.brand = globalBrandFilter;
       const events = await listEvents(filters);
       renderFilters(container, events);
     }
@@ -292,26 +259,12 @@ function renderFilters(container, initialEvents) {
   filterSection.innerHTML = `
     <div class="filter-bar">
       <input type="text" id="f-search" placeholder="🔍 Zoeken op titel..." value="${esc(filters.search)}" class="filter-input">
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-      ${activePage === 'Dashboard' ? `
-      <select id="f-brand" class="filter-select">
-        <option value="">Alle merken</option>
-        <option value="Academy" ${filters.brand === 'Academy' ? 'selected' : ''}>Academy</option>
-        <option value="Invest" ${filters.brand === 'Invest' ? 'selected' : ''}>Invest</option>
-        <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>Fund</option>
-      </select>` : ''}
->>>>>>> parent of 2a9a512 (branding)
-=======
-      ${activePage === 'Dashboard' ? `
       <select id="f-brand" class="filter-select">
         <option value="">Alle merken</option>
         <option value="Academy" ${filters.brand === 'Academy' ? 'selected' : ''}>${esc(academyLabel)}</option>
         <option value="Invest" ${filters.brand === 'Invest' ? 'selected' : ''}>${esc(investLabel)}</option>
         <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>${esc(fundLabel)}</option>
-      </select>` : ''}
->>>>>>> parent of bdc6f8e (branding extra)
+      </select>
       <select id="f-period" class="filter-select">
         <option value="">Alle periodes</option>
         <option value="month" ${filters.period === 'month' ? 'selected' : ''}>Deze maand</option>
@@ -327,12 +280,11 @@ function renderFilters(container, initialEvents) {
 
   const applyFilters = async () => {
     filters.search = container.querySelector('#f-search').value;
-    if (activePage === 'Dashboard') {
-      filters.brand = container.querySelector('#f-brand').value;
-      const dashboardBrandKey = filters.brand ? resolveBrandKey(filters.brand) : 'archer_academy';
-      syncShellBrandDecor(dashboardBrandKey);
-    }
+    filters.brand = container.querySelector('#f-brand').value;
     filters.period = container.querySelector('#f-period').value;
+    
+    const dashboardBrandKey = filters.brand ? resolveBrandKey(filters.brand) : 'archer_academy';
+    syncShellBrandDecor(dashboardBrandKey);
 
     listArea.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
     const events = await listEvents(filters);
@@ -340,7 +292,7 @@ function renderFilters(container, initialEvents) {
   };
 
   container.querySelector('#f-search').oninput = applyFilters;
-  if (activePage === 'Dashboard') container.querySelector('#f-brand').onchange = applyFilters;
+  container.querySelector('#f-brand').onchange = applyFilters;
   container.querySelector('#f-period').onchange = applyFilters;
 }
 
@@ -389,16 +341,7 @@ function renderEventList(container, events) {
 // ─── MODAL ───────────────────────────────────────────────────
 async function openModal(event) {
   const isEdit = !!event;
-<<<<<<< HEAD
-<<<<<<< HEAD
-  const initialBrand = event?.brand || globalBrandFilter || getBrandDbValue(store.brandId || "Academy");
-=======
   const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
->>>>>>> parent of bdc6f8e (branding extra)
-  const selectedBrandValue = getBrandDbValue(initialBrand);
-=======
-  const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
->>>>>>> parent of 2a9a512 (branding)
   const initialBrandKey = resolveBrandKey(initialBrand);
   const initialTheme = getBrandTheme(initialBrandKey);
   const settingsBrand = normalizeBrandForSettings(initialBrand);
@@ -473,9 +416,9 @@ async function openModal(event) {
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Locatie</label><select id="m-loc-preset"></select></div>
+            <div id="location-name-container" style="display: none;"><label>Ander locatie</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div id="location-name-container" style="display: none"><label>Ander locatie</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
             <div><label>Link naar locatie</label><input id="m-loc-url" value="${esc(event?.location_url || '')}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
@@ -485,12 +428,11 @@ async function openModal(event) {
           <div style="margin-top:16px;">
             <label>Catering</label>
             <div id="m-catering-options" style="max-height: 100px; overflow-y: auto; border: 1px solid var(--border-light); padding: 5px; border-radius: 4px;">
-                <!-- Checkboxes will be rendered here -->
             </div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Cateringkost</label><input id="m-catering-cost" type="text" value="€ 0,00" readonly></div>
-            <div><label>Budget</label><input id="m-budget" type="text" placeholder="€"></div>
+            <div><label>Budget</label><input id="m-budget" type="text" placeholder="€" value="${esc(event?.budget || '')}"></div>
           </div>
           <div style="margin-top:16px;"><label>Interne notities</label><textarea id="m-notes" rows="2">${esc(event?.notes_internal || '')}</textarea></div>
         </div>
@@ -525,7 +467,6 @@ async function openModal(event) {
   const locationUrlEl = overlay.querySelector('#m-loc-url');
   const capacityEl = overlay.querySelector('#m-cap');
   const expectedEl = overlay.querySelector('#m-exp');
-  const budgetEl = overlay.querySelector('#m-budget');
 
   let modalSettingsRows = settingsRows || [];
   let activeLocationPresets = [];
@@ -598,12 +539,14 @@ async function openModal(event) {
       return `${numeric.toFixed(2)} ${currency || 'EUR'}`;
     }
   };
-
+  
   const syncCateringCost = () => {
     const cateringOptionsEl = overlay.querySelector('#m-catering-options');
     const cateringCostEl = overlay.querySelector('#m-catering-cost');
     const expectedEl = overlay.querySelector('#m-exp');
     const capacityEl = overlay.querySelector('#m-cap');
+
+    if (!cateringOptionsEl || !cateringCostEl || !expectedEl || !capacityEl) return;
 
     const selectedCateringNames = Array.from(cateringOptionsEl.querySelectorAll('input[name="catering"]:checked')).map(cb => cb.value);
     let totalCost = 0;
@@ -626,13 +569,13 @@ async function openModal(event) {
         });
     }
 
-    if (cateringCostEl) {
-      cateringCostEl.value = formatCurrencyValue(totalCost, currency);
-    }
+    cateringCostEl.value = formatCurrencyValue(totalCost, currency);
   };
 
   const rebuildCateringOptions = () => {
     const cateringOptionsEl = overlay.querySelector('#m-catering-options');
+    if (!cateringOptionsEl) return;
+    
     const brandForScope = normalizeBrandForSettings(brandEl.value);
 
     activeCateringOptions = (cateringRows || [])
@@ -645,38 +588,35 @@ async function openModal(event) {
 
     const currentValues = event?.catering ? event.catering.split(',') : [];
 
-    if (cateringOptionsEl) {
-      cateringOptionsEl.innerHTML = activeCateringOptions.map((row) => {
-          const priceAmount = getCateringPriceAmount(row);
-          const priceCurrency = getCateringCurrency(row);
-          const supplier = String(row?.supplier_name || row?.supplier || '').trim();
-          const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
-          const supplierLabel = supplier ? ` (${supplier})` : '';
-          const checked = currentValues.includes(row.name) ? 'checked' : '';
-          
-          return `<div style="margin-bottom: 4px;">
-                    <input type="checkbox" id="catering-${row.id}" name="catering" value="${esc(row.name)}" ${checked} style="margin-right: 8px;">
-                    <label for="catering-${row.id}">${esc(`${row.name || '-'}${priceLabel}${supplierLabel}`)}</label>
-                  </div>`;
-        }).join('');
+    cateringOptionsEl.innerHTML = activeCateringOptions.map((row) => {
+        const priceAmount = getCateringPriceAmount(row);
+        const priceCurrency = getCateringCurrency(row);
+        const supplier = String(row?.supplier_name || row?.supplier || '').trim();
+        const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
+        const supplierLabel = supplier ? ` (${supplier})` : '';
+        const checked = currentValues.includes(row.name) ? 'checked' : '';
+        
+        return `<div style="margin-bottom: 4px;">
+                  <input type="checkbox" id="catering-${row.id}" name="catering" value="${esc(row.name)}" ${checked} style="margin-right: 8px;">
+                  <label for="catering-${row.id}">${esc(`${row.name || '-'}${priceLabel}${supplierLabel}`)}</label>
+                </div>`;
+      }).join('');
 
-      // Add change listeners to checkboxes
-      cateringOptionsEl.querySelectorAll('input[name="catering"]').forEach(checkbox => {
-          checkbox.addEventListener('change', syncCateringCost);
-      });
-    }
+    cateringOptionsEl.querySelectorAll('input[name="catering"]').forEach(checkbox => {
+        checkbox.addEventListener('change', syncCateringCost);
+    });
 
     syncCateringCost();
   };
 
   const syncLocationUi = () => {
     if (locationTypeEl.value === 'online') {
-      locationUrlEl.placeholder = 'https://zoom.us/j/...';
-      if (!locationEl.value.trim()) locationEl.value = 'Online meeting';
+      if(locationUrlEl) locationUrlEl.placeholder = 'https://zoom.us/j/...';
+      if(locationEl && !locationEl.value.trim()) locationEl.value = 'Online meeting';
     } else if (locationTypeEl.value === 'physical') {
-      locationUrlEl.placeholder = 'https://maps.google.com/...';
+      if(locationUrlEl) locationUrlEl.placeholder = 'https://maps.google.com/...';
     } else {
-      locationUrlEl.placeholder = 'https://...';
+      if(locationUrlEl) locationUrlEl.placeholder = 'https://...';
     }
   };
 
@@ -715,7 +655,6 @@ async function openModal(event) {
   rebuildCateringOptions();
   syncLocationUi();
   syncModalTheme();
-  syncCateringEstimate();
   handleLocationPresetChange();
 
   titlePresetEl.onchange = () => {
@@ -769,6 +708,7 @@ async function openModal(event) {
       expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
       catering: Array.from(overlay.querySelectorAll('#m-catering-options input:checked')).map(cb => cb.value).join(','),
       notes_internal: overlay.querySelector('#m-notes').value,
+      budget: overlay.querySelector('#m-budget').value,
     };
     if (!payload.title) {
       showToast('Titel is verplicht.', 'error');
@@ -1041,7 +981,6 @@ function inferLocationType(location, locationUrl) {
   return isOnline ? 'online' : 'physical';
 }
 
-<<<<<<< HEAD
 async function fetchBrandVisualSettings() {
   const fallback = {};
   try {
@@ -1117,8 +1056,6 @@ function getActivePageTitle() {
   return activePage;
 }
 
-=======
->>>>>>> parent of 2a9a512 (branding)
 function resolveShellBrandKey() {
   const map = {
     Academy: 'archer_academy',
@@ -1135,32 +1072,20 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   const appLayout = rootEl?.querySelector('.app-layout');
   if (!appLayout) return;
 
+  const visualSettings = getBrandVisualSettings(brandKey);
   const theme = getBrandTheme(brandKey);
   appLayout.dataset.brandTheme = brandKey;
+  applyInlineCssVariables(appLayout, getBrandCssVars(brandKey, visualSettings));
+
 
   const sidebarLogo = rootEl.querySelector('.sidebar-logo img');
-  if (sidebarLogo) sidebarLogo.src = theme.logoWordmark;
+  if (sidebarLogo) sidebarLogo.src = visualSettings.logo_url?.trim() || theme.logoWordmark;
 
   const headerIcon = rootEl.querySelector('.header-brand-icon');
   if (headerIcon) headerIcon.src = theme.logoIcon;
 
   const headerChip = rootEl.querySelector('.header-brand-chip');
-<<<<<<< HEAD
-<<<<<<< HEAD
-  if (headerChip) headerChip.textContent = getGlobalBrandFilterLabel();
-
-  const headerBrandFilter = rootEl.querySelector('#global-brand-filter');
-  if (headerBrandFilter) headerBrandFilter.value = globalBrandFilter || '';
-
-  rootEl.querySelectorAll('.nav-brand-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.brand === globalBrandFilter);
-  });
-=======
-  if (headerChip) headerChip.textContent = `Archer ${theme.label}`;
->>>>>>> parent of 2a9a512 (branding)
-=======
   if (headerChip) headerChip.textContent = getBrandDisplayName(brandKey, visualSettings);
->>>>>>> parent of bdc6f8e (branding extra)
 }
 
 function errorHasColumn(error, columnName) {
