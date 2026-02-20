@@ -48,9 +48,10 @@ const DEFAULT_EVENT_TITLE_PRESETS = [
 ];
 
 const DEFAULT_PHYSICAL_LOCATION_PRESETS = [
-  'Aula Archer',
+  'Archer Office',
+  'Aula',
   'Seneca',
-  'Kantoor Archer'
+  'Ander'
 ];
 
 const DEFAULT_ONLINE_LOCATION_PRESETS = [
@@ -395,12 +396,12 @@ async function openModal(event) {
 
   overlay.innerHTML = `
     <div class="modal modal-large event-modal" data-brand-theme="${esc(initialBrandKey)}" style="${esc(cssVarsToInlineStyle(initialThemeVars))}">
-      <div class="modal-header">
+      <div class="modal-header" style="padding: 32px 32px 24px;">
         <div class="event-modal-brand">
           <img src="${esc(initialTheme.logoIcon)}" alt="Archer icon" onerror="this.style.display='none'">
           <div>
             <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
-            <p class="event-modal-subtitle">Hospitality event composer</p>
+            <p class="event-modal-subtitle">nieuw event</p>
           </div>
         </div>
         <button class="btn-ghost" id="m-close">✕</button>
@@ -418,7 +419,7 @@ async function openModal(event) {
         <div id="tab-details">
           <div class="grid-2">
             <div>
-              <label>Evenement titel *</label>
+              <label>Titel evenement *</label>
               <input id="m-title" value="${esc(event?.title || '')}">
             </div>
             <div>
@@ -428,34 +429,40 @@ async function openModal(event) {
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Merk</label><select id="m-brand">${brandOptions}</select></div>
-            <div><label>Locatie type</label><select id="m-loc-type">
+            <div><label>Type event</label><select id="m-loc-type">
               ${locationTypeOptions.map(opt => `<option value="${opt.value}" ${initialLocationType === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
             </select></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Start datum & tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
-            <div><label>Eind datum & tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
+            <div><label>Startdatum & -tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
+            <div><label>Einddatum & -tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Locatie preset</label><select id="m-loc-preset"></select></div>
+            <div id="m-loc-preset-container"><label id="l-loc-preset">Locatie presets</label><select id="m-loc-preset"></select></div>
             <div><label>Tijdzone</label><select id="m-tz">
               <option value="Europe/Brussels" ${(event?.timezone || 'Europe/Brussels') === 'Europe/Brussels' ? 'selected' : ''}>Europe/Brussels</option>
               <option value="UTC" ${event?.timezone === 'UTC' ? 'selected' : ''}>UTC</option>
             </select></div>
           </div>
-          <div class="grid-2" style="margin-top:16px;">
+          <div class="grid-2" style="margin-top:16px;" id="m-loc-container">
             <div><label>Locatie naam</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
-            <div><label>Locatie URL (Maps / Online link)</label><input id="m-loc-url" value="${esc(event?.location_url || '')}" placeholder="https://..."></div>
+            <div><label>Link naar locatie</label><input id="m-loc-url" value="${esc(event?.location_url || '')}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Maximale capaciteit</label><input type="number" id="m-cap" value="${event?.capacity || ''}"></div>
             <div><label>Verwacht aantal gasten</label><input type="number" id="m-exp" value="${event?.expected_attendance || ''}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Catering optie</label><select id="m-catering"></select></div>
-            <div><label>Indicatieve cateringkost</label><input id="m-catering-estimate" type="text" value="-" readonly></div>
+            <div><label>Catering</label><select id="m-catering"></select></div>
+            <div><label>Cateringkost</label><input id="m-catering-estimate" type="text" value="-" readonly></div>
           </div>
-          <div style="margin-top:16px;"><label>Omschrijving (extern)</label><textarea id="m-desc" rows="3">${esc(event?.description || '')}</textarea></div>
+          <div style="margin-top:16px;">
+            <label>Budget</label>
+            <div style="position:relative;">
+              <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);">€</span>
+              <input id="m-budget" type="number" step="0.01" value="${event?.budget || ''}" style="padding-left:30px;" placeholder="0,00">
+            </div>
+          </div>
           <div style="margin-top:16px;"><label>Interne notities</label><textarea id="m-notes" rows="2">${esc(event?.notes_internal || '')}</textarea></div>
         </div>
 
@@ -601,14 +608,14 @@ async function openModal(event) {
     cateringEl.innerHTML = `
       <option value="">Geen catering</option>
       ${activeCateringOptions.map((row) => {
-        const priceAmount = getCateringPriceAmount(row);
-        const priceCurrency = getCateringCurrency(row);
-        const supplier = String(row?.supplier_name || row?.supplier || '').trim();
-        const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
-        const supplierLabel = supplier ? ` (${supplier})` : '';
-        const selected = String(row?.name || '') === currentValue ? 'selected' : '';
-        return `<option value="${esc(row?.name || '')}" ${selected}>${esc(`${row?.name || '-'}${priceLabel}${supplierLabel}`)}</option>`;
-      }).join('')}
+      const priceAmount = getCateringPriceAmount(row);
+      const priceCurrency = getCateringCurrency(row);
+      const supplier = String(row?.supplier_name || row?.supplier || '').trim();
+      const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
+      const supplierLabel = supplier ? ` (${supplier})` : '';
+      const selected = String(row?.name || '') === currentValue ? 'selected' : '';
+      return `<option value="${esc(row?.name || '')}" ${selected}>${esc(`${row?.name || '-'}${priceLabel}${supplierLabel}`)}</option>`;
+    }).join('')}
       ${currentValue && !hasCurrentValue ? `<option value="${esc(currentValue)}" selected>${esc(currentValue)}</option>` : ''}
     `;
 
@@ -645,10 +652,29 @@ async function openModal(event) {
 
   locationPresetEl.onchange = () => {
     const idx = parseInt(locationPresetEl.value, 10);
-    if (Number.isNaN(idx)) return;
+    const locPresetLabel = overlay.querySelector('#l-loc-preset');
+    const locNameContainer = overlay.querySelector('#m-loc-container div:first-child');
+    const locUrlContainer = overlay.querySelector('#m-loc-container div:last-child');
+
+    if (Number.isNaN(idx)) {
+      locPresetLabel.textContent = 'Locatie presets';
+      locNameContainer.style.display = 'block';
+      return;
+    }
+
     const preset = activeLocationPresets[idx];
     if (!preset) return;
-    locationEl.value = preset.location || preset.label || '';
+
+    if (preset.label === 'Ander') {
+      locPresetLabel.textContent = 'Locatie';
+      locNameContainer.style.display = 'none';
+      locationEl.value = '';
+    } else {
+      locPresetLabel.textContent = 'Locatie presets';
+      locNameContainer.style.display = 'block';
+      locationEl.value = preset.location || preset.label || '';
+    }
+
     if (preset.url && !locationUrlEl.value.trim()) locationUrlEl.value = preset.url;
   };
 
@@ -693,8 +719,9 @@ async function openModal(event) {
       expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
       catering: overlay.querySelector('#m-catering').value || null,
       timezone: overlay.querySelector('#m-tz').value,
-      description: overlay.querySelector('#m-desc').value,
+      description: event?.description || '', // Keep description as is since we removed the field but might still want to preserve it or just pass empty
       notes_internal: overlay.querySelector('#m-notes').value,
+      budget: parseFloat(overlay.querySelector('#m-budget').value) || null,
     };
     if (!payload.title) {
       showToast('Titel is verplicht.', 'error');
