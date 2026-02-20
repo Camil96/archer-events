@@ -328,32 +328,6 @@ textarea {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  align-items: flex-end;
-}
-
-.header-brand-filter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 220px;
-}
-
-.header-brand-filter span {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-.header-brand-select {
-  min-height: 42px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-heading);
-  font-weight: 500;
-  padding: 8px 12px;
 }
 
 h1 {
@@ -1002,17 +976,7 @@ textarea:focus-visible {
   .header-actions-row {
     width: 100%;
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .header-brand-filter {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .header-brand-select {
-    width: 100%;
+    grid-template-columns: 1fr 1fr;
   }
 
   .task-add-form {
@@ -1156,6 +1120,10 @@ textarea:focus-visible {
   .filter-input,
   .filter-select {
     min-width: 100%;
+  }
+
+  .header-actions-row {
+    grid-template-columns: 1fr;
   }
 
   .participant-stats {
