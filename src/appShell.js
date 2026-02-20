@@ -8,7 +8,8 @@ import {
   listBrands, createBrand, updateBrand,
   listAvailableUsers, listAuditLog, getDashboardStats,
   assignTask, unassignTask,
-  importEventCatalog2026
+  importEventCatalog2026,
+  store
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
 import { renderTimeline } from "./timeline.js";
@@ -30,12 +31,9 @@ let filters = { brand: '', search: '', period: '' };
 let catalogImportStarted = false;
 <<<<<<< HEAD
 let brandVisualSettingsById = {};
-<<<<<<< HEAD
 let globalBrandFilter = getBrandDbValue(store.brandId || "Academy");
 =======
 >>>>>>> parent of 2a9a512 (branding)
-=======
->>>>>>> parent of bdc6f8e (branding extra)
 
 const DEFAULT_EVENT_TITLE_PRESETS = [
   'Performance sessie',
@@ -48,10 +46,9 @@ const DEFAULT_EVENT_TITLE_PRESETS = [
 ];
 
 const DEFAULT_PHYSICAL_LOCATION_PRESETS = [
-  'Archer Office',
-  'Aula',
+  'Aula Archer',
   'Seneca',
-  'Ander'
+  'Kantoor Archer'
 ];
 
 const DEFAULT_ONLINE_LOCATION_PRESETS = [
@@ -70,16 +67,23 @@ export function renderAppShell(root, session) {
 async function render() {
 <<<<<<< HEAD
   brandVisualSettingsById = await fetchBrandVisualSettings();
-  const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
+  filters.brand = globalBrandFilter || '';
+  const canManageEvents = ['Dashboard', 'Calendar'].includes(activePage);
   const shellBrandKey = resolveShellBrandKey();
   const shellBrandVisual = getBrandVisualSettings(shellBrandKey);
   const shellThemeVars = getBrandCssVars(shellBrandKey, shellBrandVisual);
-  const shellBrandDisplay = getBrandDisplayName(shellBrandKey, shellBrandVisual);
+  const shellBrandDisplay = getGlobalBrandFilterLabel();
   const shellWordmark = shellBrandVisual.logo_url?.trim() || getBrandLogoWordmark(shellBrandKey);
   const shellIcon = getBrandLogoIcon(shellBrandKey);
   const academyNavLabel = getBrandFilterOptionLabel('archer_academy');
   const investNavLabel = getBrandFilterOptionLabel('archer_invest');
   const fundNavLabel = getBrandFilterOptionLabel('archer_fund');
+  const globalBrandOptions = `
+    <option value="">Alle merken</option>
+    <option value="Academy" ${globalBrandFilter === "Academy" ? "selected" : ""}>${esc(academyNavLabel)}</option>
+    <option value="Invest" ${globalBrandFilter === "Invest" ? "selected" : ""}>${esc(investNavLabel)}</option>
+    <option value="Fund" ${globalBrandFilter === "Fund" ? "selected" : ""}>${esc(fundNavLabel)}</option>
+  `;
   const pageTitle = getActivePageTitle();
 =======
   const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
@@ -105,7 +109,6 @@ async function render() {
         <div class="nav-section">
           <div class="nav-label">Contexten</div>
 <<<<<<< HEAD
-<<<<<<< HEAD
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Academy' ? 'active' : ''}" data-brand="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Invest' ? 'active' : ''}" data-brand="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
           <a class="nav-item nav-brand-item ${globalBrandFilter === 'Fund' ? 'active' : ''}" data-brand="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
@@ -114,11 +117,6 @@ async function render() {
           <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>Invest</a>
           <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>Fund</a>
 >>>>>>> parent of 2a9a512 (branding)
-=======
-          <a class="nav-item ${activePage === 'Academy' ? 'active' : ''}" data-page="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
-          <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
-          <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
->>>>>>> parent of bdc6f8e (branding extra)
         </div>
 
         <div class="nav-section">
@@ -141,11 +139,16 @@ async function render() {
               <h1>${activePage === 'Admin' ? 'Instellingen' : activePage}</h1>
               <span class="header-brand-chip">Archer ${esc(shellBrandLabel)}</span>
             </div>
-            ${isListView || activePage === 'Calendar' ? `
-              <div class="header-actions-row">
-                <button id="export-csv" class="btn-secondary">⬇ Export CSV</button>
-                <button id="add-event" class="btn-primary">+ Nieuw event</button>
-              </div>` : ''}
+            <div class="header-actions-row">
+              <label class="header-brand-filter">
+                <span>Merkfilter</span>
+                <select id="global-brand-filter" class="header-brand-select">
+                  ${globalBrandOptions}
+                </select>
+              </label>
+              ${canManageEvents ? `<button id="export-csv" class="btn-secondary">⬇ Export CSV</button>` : ""}
+              ${canManageEvents ? `<button id="add-event" class="btn-primary">+ Nieuw event</button>` : ""}
+            </div>
           </div>
           <div id="content-area"></div>
         </div>
@@ -175,10 +178,19 @@ async function render() {
   };
 
   // Navigation handlers
-  rootEl.querySelectorAll('.nav-item').forEach(el => el.onclick = () => {
+  rootEl.querySelectorAll('.nav-item[data-page]').forEach(el => el.onclick = () => {
     closeSidebar();
     activePage = el.dataset.page;
-    filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
+    filters = { brand: globalBrandFilter || '', search: '', period: '' };
+    render();
+  });
+
+  rootEl.querySelectorAll('.nav-brand-item').forEach(el => el.onclick = () => {
+    closeSidebar();
+    globalBrandFilter = el.dataset.brand || '';
+    filters = { brand: globalBrandFilter || '', search: '', period: '' };
+    if (globalBrandFilter) store.brandId = getBrandId(globalBrandFilter);
+    activePage = 'Dashboard';
     render();
   });
 
@@ -216,9 +228,20 @@ async function render() {
   // Export CSV
   const exportBtn = rootEl.querySelector('#export-csv');
   if (exportBtn) exportBtn.onclick = async () => {
-    const events = await listEvents(filters);
+    const events = await listEvents(getActiveEventFilters());
     downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
+
+  const globalBrandFilterEl = rootEl.querySelector('#global-brand-filter');
+  if (globalBrandFilterEl) {
+    globalBrandFilterEl.onchange = async () => {
+      globalBrandFilter = globalBrandFilterEl.value || '';
+      filters.brand = globalBrandFilter || '';
+      if (globalBrandFilter) store.brandId = getBrandId(globalBrandFilter);
+      syncShellBrandDecor(resolveShellBrandKey());
+      await loadContent();
+    };
+  }
 
   if (!catalogImportStarted) {
     catalogImportStarted = true;
@@ -232,14 +255,14 @@ async function render() {
 async function loadContent() {
   const container = rootEl.querySelector('#content-area');
   container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const activeFilters = getActiveEventFilters();
 
   try {
     if (activePage === 'Admin') {
       await renderSettings(container);
     } else if (activePage === 'Calendar') {
-      const events = await listEvents();
+      const events = await listEvents(activeFilters);
       renderCalendar(container, events, (ev) => openModal(ev));
-<<<<<<< HEAD
 <<<<<<< HEAD
 =======
     } else if (activePage === 'Timeline') {
@@ -249,15 +272,7 @@ async function loadContent() {
       await renderDashboard(container);
 >>>>>>> parent of 2a9a512 (branding)
     } else {
-=======
-    } else if (activePage === 'Dashboard') {
->>>>>>> parent of bdc6f8e (branding extra)
       await renderDashboard(container);
-    } else {
-      // Brand pages
-      filters.brand = activePage;
-      const events = await listEvents(filters);
-      renderFilters(container, events);
     }
   } catch (e) {
     container.innerHTML = `<div class="card error-card"><p>⚠ Fout bij laden: ${esc(e.message)}</p></div>`;
@@ -266,9 +281,10 @@ async function loadContent() {
 
 // ─── DASHBOARD ───────────────────────────────────────────────
 async function renderDashboard(container) {
+  const activeFilters = getActiveEventFilters();
   const [stats, events] = await Promise.all([
-    getDashboardStats(),
-    listEvents(filters)
+    getDashboardStats({ brand: activeFilters.brand }),
+    listEvents(activeFilters)
   ]);
 
   container.innerHTML = `
@@ -284,15 +300,10 @@ async function renderDashboard(container) {
 
 // ─── FILTERS ─────────────────────────────────────────────────
 function renderFilters(container, initialEvents) {
-  const academyLabel = getBrandFilterOptionLabel('archer_academy');
-  const investLabel = getBrandFilterOptionLabel('archer_invest');
-  const fundLabel = getBrandFilterOptionLabel('archer_fund');
-
   const filterSection = document.createElement('div');
   filterSection.innerHTML = `
     <div class="filter-bar">
       <input type="text" id="f-search" placeholder="🔍 Zoeken op titel..." value="${esc(filters.search)}" class="filter-input">
-<<<<<<< HEAD
 <<<<<<< HEAD
 =======
       ${activePage === 'Dashboard' ? `
@@ -303,15 +314,6 @@ function renderFilters(container, initialEvents) {
         <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>Fund</option>
       </select>` : ''}
 >>>>>>> parent of 2a9a512 (branding)
-=======
-      ${activePage === 'Dashboard' ? `
-      <select id="f-brand" class="filter-select">
-        <option value="">Alle merken</option>
-        <option value="Academy" ${filters.brand === 'Academy' ? 'selected' : ''}>${esc(academyLabel)}</option>
-        <option value="Invest" ${filters.brand === 'Invest' ? 'selected' : ''}>${esc(investLabel)}</option>
-        <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>${esc(fundLabel)}</option>
-      </select>` : ''}
->>>>>>> parent of bdc6f8e (branding extra)
       <select id="f-period" class="filter-select">
         <option value="">Alle periodes</option>
         <option value="month" ${filters.period === 'month' ? 'selected' : ''}>Deze maand</option>
@@ -327,20 +329,14 @@ function renderFilters(container, initialEvents) {
 
   const applyFilters = async () => {
     filters.search = container.querySelector('#f-search').value;
-    if (activePage === 'Dashboard') {
-      filters.brand = container.querySelector('#f-brand').value;
-      const dashboardBrandKey = filters.brand ? resolveBrandKey(filters.brand) : 'archer_academy';
-      syncShellBrandDecor(dashboardBrandKey);
-    }
     filters.period = container.querySelector('#f-period').value;
 
     listArea.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
-    const events = await listEvents(filters);
+    const events = await listEvents(getActiveEventFilters());
     renderEventList(listArea, events);
   };
 
   container.querySelector('#f-search').oninput = applyFilters;
-  if (activePage === 'Dashboard') container.querySelector('#f-brand').onchange = applyFilters;
   container.querySelector('#f-period').onchange = applyFilters;
 }
 
@@ -390,11 +386,7 @@ function renderEventList(container, events) {
 async function openModal(event) {
   const isEdit = !!event;
 <<<<<<< HEAD
-<<<<<<< HEAD
   const initialBrand = event?.brand || globalBrandFilter || getBrandDbValue(store.brandId || "Academy");
-=======
-  const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
->>>>>>> parent of bdc6f8e (branding extra)
   const selectedBrandValue = getBrandDbValue(initialBrand);
 =======
   const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
@@ -434,8 +426,9 @@ async function openModal(event) {
       <div class="modal-header">
         <div class="event-modal-brand">
           <img src="${esc(initialTheme.logoIcon)}" alt="Archer icon" onerror="this.style.display='none'">
-          <div style="padding: 0.5rem 0;">
-            <h3>${isEdit ? 'Details: ' + esc(event.title) : 'nieuw event'}</h3>
+          <div>
+            <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
+            <p class="event-modal-subtitle">Hospitality event composer</p>
           </div>
         </div>
         <button class="btn-ghost" id="m-close">✕</button>
@@ -453,7 +446,7 @@ async function openModal(event) {
         <div id="tab-details">
           <div class="grid-2">
             <div>
-              <label>Titel evenement *</label>
+              <label>Evenement titel *</label>
               <input id="m-title" value="${esc(event?.title || '')}">
             </div>
             <div>
@@ -463,35 +456,34 @@ async function openModal(event) {
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Merk</label><select id="m-brand">${brandOptions}</select></div>
-            <div><label>Type event</label><select id="m-loc-type">
+            <div><label>Locatie type</label><select id="m-loc-type">
               ${locationTypeOptions.map(opt => `<option value="${opt.value}" ${initialLocationType === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
             </select></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Startdatum & -tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
-            <div><label>Einddatum & -tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
+            <div><label>Start datum & tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
+            <div><label>Eind datum & tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Locatie</label><select id="m-loc-preset"></select></div>
+            <div><label>Locatie preset</label><select id="m-loc-preset"></select></div>
+            <div><label>Tijdzone</label><select id="m-tz">
+              <option value="Europe/Brussels" ${(event?.timezone || 'Europe/Brussels') === 'Europe/Brussels' ? 'selected' : ''}>Europe/Brussels</option>
+              <option value="UTC" ${event?.timezone === 'UTC' ? 'selected' : ''}>UTC</option>
+            </select></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div id="location-name-container" style="display: none"><label>Ander locatie</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
-            <div><label>Link naar locatie</label><input id="m-loc-url" value="${esc(event?.location_url || '')}"></div>
+            <div><label>Locatie naam</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
+            <div><label>Locatie URL (Maps / Online link)</label><input id="m-loc-url" value="${esc(event?.location_url || '')}" placeholder="https://..."></div>
           </div>
           <div class="grid-2" style="margin-top:16px;">
             <div><label>Maximale capaciteit</label><input type="number" id="m-cap" value="${event?.capacity || ''}"></div>
             <div><label>Verwacht aantal gasten</label><input type="number" id="m-exp" value="${event?.expected_attendance || ''}"></div>
           </div>
-          <div style="margin-top:16px;">
-            <label>Catering</label>
-            <div id="m-catering-options" style="max-height: 100px; overflow-y: auto; border: 1px solid var(--border-light); padding: 5px; border-radius: 4px;">
-                <!-- Checkboxes will be rendered here -->
-            </div>
-          </div>
           <div class="grid-2" style="margin-top:16px;">
-            <div><label>Cateringkost</label><input id="m-catering-cost" type="text" value="€ 0,00" readonly></div>
-            <div><label>Budget</label><input id="m-budget" type="text" placeholder="€"></div>
+            <div><label>Catering optie</label><select id="m-catering"></select></div>
+            <div><label>Indicatieve cateringkost</label><input id="m-catering-estimate" type="text" value="-" readonly></div>
           </div>
+          <div style="margin-top:16px;"><label>Omschrijving (extern)</label><textarea id="m-desc" rows="3">${esc(event?.description || '')}</textarea></div>
           <div style="margin-top:16px;"><label>Interne notities</label><textarea id="m-notes" rows="2">${esc(event?.notes_internal || '')}</textarea></div>
         </div>
 
@@ -523,9 +515,11 @@ async function openModal(event) {
   const locationPresetEl = overlay.querySelector('#m-loc-preset');
   const locationEl = overlay.querySelector('#m-loc');
   const locationUrlEl = overlay.querySelector('#m-loc-url');
+  const timezoneEl = overlay.querySelector('#m-tz');
   const capacityEl = overlay.querySelector('#m-cap');
   const expectedEl = overlay.querySelector('#m-exp');
-  const budgetEl = overlay.querySelector('#m-budget');
+  const cateringEl = overlay.querySelector('#m-catering');
+  const cateringEstimateEl = overlay.querySelector('#m-catering-estimate');
 
   let modalSettingsRows = settingsRows || [];
   let activeLocationPresets = [];
@@ -599,40 +593,25 @@ async function openModal(event) {
     }
   };
 
-  const syncCateringCost = () => {
-    const cateringOptionsEl = overlay.querySelector('#m-catering-options');
-    const cateringCostEl = overlay.querySelector('#m-catering-cost');
-    const expectedEl = overlay.querySelector('#m-exp');
-    const capacityEl = overlay.querySelector('#m-cap');
-
-    const selectedCateringNames = Array.from(cateringOptionsEl.querySelectorAll('input[name="catering"]:checked')).map(cb => cb.value);
-    let totalCost = 0;
-    let currency = 'EUR';
-
+  const syncCateringEstimate = () => {
+    const selectedName = cateringEl.value;
+    const selectedOption = activeCateringOptions.find((entry) => String(entry.name || '') === selectedName);
+    const priceAmount = getCateringPriceAmount(selectedOption);
+    const currency = getCateringCurrency(selectedOption);
     const expected = Number.parseInt(expectedEl.value || '0', 10);
     const capacity = Number.parseInt(capacityEl.value || '0', 10);
     const attendeeCount = Number.isFinite(expected) && expected > 0 ? expected : (Number.isFinite(capacity) ? Math.max(capacity, 0) : 0);
 
-    if (attendeeCount > 0) {
-        selectedCateringNames.forEach(name => {
-            const selectedOption = activeCateringOptions.find((entry) => String(entry.name || '') === name);
-            if (selectedOption) {
-                const priceAmount = getCateringPriceAmount(selectedOption);
-                if (priceAmount !== null) {
-                    totalCost += priceAmount * attendeeCount;
-                    currency = getCateringCurrency(selectedOption);
-                }
-            }
-        });
+    if (!selectedOption || priceAmount === null || attendeeCount <= 0) {
+      cateringEstimateEl.value = '-';
+      return;
     }
 
-    if (cateringCostEl) {
-      cateringCostEl.value = formatCurrencyValue(totalCost, currency);
-    }
+    const estimate = attendeeCount * priceAmount;
+    cateringEstimateEl.value = `${formatCurrencyValue(estimate, currency)} (${attendeeCount} gasten)`;
   };
 
   const rebuildCateringOptions = () => {
-    const cateringOptionsEl = overlay.querySelector('#m-catering-options');
     const brandForScope = normalizeBrandForSettings(brandEl.value);
 
     activeCateringOptions = (cateringRows || [])
@@ -643,36 +622,31 @@ async function openModal(event) {
       })
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'nl'));
 
-    const currentValues = event?.catering ? event.catering.split(',') : [];
+    const currentValue = String(cateringEl.value || event?.catering || '').trim();
+    const hasCurrentValue = currentValue && activeCateringOptions.some((row) => String(row?.name || '') === currentValue);
 
-    if (cateringOptionsEl) {
-      cateringOptionsEl.innerHTML = activeCateringOptions.map((row) => {
-          const priceAmount = getCateringPriceAmount(row);
-          const priceCurrency = getCateringCurrency(row);
-          const supplier = String(row?.supplier_name || row?.supplier || '').trim();
-          const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
-          const supplierLabel = supplier ? ` (${supplier})` : '';
-          const checked = currentValues.includes(row.name) ? 'checked' : '';
-          
-          return `<div style="margin-bottom: 4px;">
-                    <input type="checkbox" id="catering-${row.id}" name="catering" value="${esc(row.name)}" ${checked} style="margin-right: 8px;">
-                    <label for="catering-${row.id}">${esc(`${row.name || '-'}${priceLabel}${supplierLabel}`)}</label>
-                  </div>`;
-        }).join('');
+    cateringEl.innerHTML = `
+      <option value="">Geen catering</option>
+      ${activeCateringOptions.map((row) => {
+        const priceAmount = getCateringPriceAmount(row);
+        const priceCurrency = getCateringCurrency(row);
+        const supplier = String(row?.supplier_name || row?.supplier || '').trim();
+        const priceLabel = priceAmount === null ? '' : ` - ${formatCurrencyValue(priceAmount, priceCurrency)}`;
+        const supplierLabel = supplier ? ` (${supplier})` : '';
+        const selected = String(row?.name || '') === currentValue ? 'selected' : '';
+        return `<option value="${esc(row?.name || '')}" ${selected}>${esc(`${row?.name || '-'}${priceLabel}${supplierLabel}`)}</option>`;
+      }).join('')}
+      ${currentValue && !hasCurrentValue ? `<option value="${esc(currentValue)}" selected>${esc(currentValue)}</option>` : ''}
+    `;
 
-      // Add change listeners to checkboxes
-      cateringOptionsEl.querySelectorAll('input[name="catering"]').forEach(checkbox => {
-          checkbox.addEventListener('change', syncCateringCost);
-      });
-    }
-
-    syncCateringCost();
+    syncCateringEstimate();
   };
 
   const syncLocationUi = () => {
     if (locationTypeEl.value === 'online') {
       locationUrlEl.placeholder = 'https://zoom.us/j/...';
       if (!locationEl.value.trim()) locationEl.value = 'Online meeting';
+      if (timezoneEl.value === 'UTC') timezoneEl.value = 'Europe/Brussels';
     } else if (locationTypeEl.value === 'physical') {
       locationUrlEl.placeholder = 'https://maps.google.com/...';
     } else {
@@ -680,43 +654,12 @@ async function openModal(event) {
     }
   };
 
-  const handleLocationPresetChange = () => {
-    const idx = parseInt(locationPresetEl.value, 10);
-    const locationNameContainer = overlay.querySelector('#location-name-container');
-
-    if (Number.isNaN(idx)) {
-        const currentLocation = locationEl.value.trim();
-        if (currentLocation && !activeLocationPresets.some(p => p.location.toLowerCase() === currentLocation.toLowerCase())) {
-            const anderIndex = activeLocationPresets.findIndex(p => p.label === 'Ander');
-            if (anderIndex >= 0) {
-                locationPresetEl.value = anderIndex;
-                if(locationNameContainer) locationNameContainer.style.display = 'block';
-            }
-        } else {
-             if(locationNameContainer) locationNameContainer.style.display = 'none';
-        }
-        return;
-    }
-
-    const preset = activeLocationPresets[idx];
-    if (!preset) return;
-
-    if (preset.label === 'Ander') {
-      if(locationNameContainer) locationNameContainer.style.display = 'block';
-    } else {
-      if(locationNameContainer) locationNameContainer.style.display = 'none';
-      locationEl.value = preset.location || preset.label || '';
-      if (preset.url && !locationUrlEl.value.trim()) locationUrlEl.value = preset.url;
-    }
-  }
-
   rebuildTitlePresets();
   rebuildLocationPresets();
   rebuildCateringOptions();
   syncLocationUi();
   syncModalTheme();
   syncCateringEstimate();
-  handleLocationPresetChange();
 
   titlePresetEl.onchange = () => {
     if (titlePresetEl.value) titleEl.value = titlePresetEl.value;
@@ -725,13 +668,22 @@ async function openModal(event) {
   locationTypeEl.onchange = () => {
     rebuildLocationPresets();
     syncLocationUi();
-    handleLocationPresetChange();
   };
 
-  locationPresetEl.onchange = handleLocationPresetChange;
+  locationPresetEl.onchange = () => {
+    const idx = parseInt(locationPresetEl.value, 10);
+    if (Number.isNaN(idx)) return;
+    const preset = activeLocationPresets[idx];
+    if (!preset) return;
+    locationEl.value = preset.location || preset.label || '';
+    if (preset.url && !locationUrlEl.value.trim()) locationUrlEl.value = preset.url;
+  };
 
-  capacityEl.oninput = syncCateringCost;
-  expectedEl.oninput = syncCateringCost;
+  cateringEl.onchange = () => {
+    syncCateringEstimate();
+  };
+  capacityEl.oninput = syncCateringEstimate;
+  expectedEl.oninput = syncCateringEstimate;
 
   brandEl.onchange = async () => {
     syncModalTheme();
@@ -739,7 +691,6 @@ async function openModal(event) {
     rebuildTitlePresets();
     rebuildLocationPresets();
     rebuildCateringOptions();
-    handleLocationPresetChange();
   };
 
   overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
@@ -767,7 +718,9 @@ async function openModal(event) {
       location_url: overlay.querySelector('#m-loc-url').value,
       capacity: parseInt(overlay.querySelector('#m-cap').value) || 0,
       expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
-      catering: Array.from(overlay.querySelectorAll('#m-catering-options input:checked')).map(cb => cb.value).join(','),
+      catering: overlay.querySelector('#m-catering').value || null,
+      timezone: overlay.querySelector('#m-tz').value,
+      description: overlay.querySelector('#m-desc').value,
       notes_internal: overlay.querySelector('#m-notes').value,
     };
     if (!payload.title) {
@@ -1106,28 +1059,26 @@ function applyInlineCssVariables(element, variables = {}) {
   });
 }
 
+function getActiveEventFilters() {
+  return {
+    brand: globalBrandFilter || '',
+    search: filters.search || '',
+    period: filters.period || '',
+  };
+}
+
 function getActivePageTitle() {
   if (activePage === 'Admin') return 'Instellingen';
   if (activePage === 'Calendar') return 'Kalender';
-
-  if (activePage === 'Academy') return getBrandFilterOptionLabel('archer_academy');
-  if (activePage === 'Invest') return getBrandFilterOptionLabel('archer_invest');
-  if (activePage === 'Fund') return getBrandFilterOptionLabel('archer_fund');
-
-  return activePage;
+  if (activePage === 'Dashboard') return 'Dashboard';
+  return 'Dashboard';
 }
 
 =======
 >>>>>>> parent of 2a9a512 (branding)
 function resolveShellBrandKey() {
-  const map = {
-    Academy: 'archer_academy',
-    Invest: 'archer_invest',
-    Fund: 'archer_fund',
-  };
-
-  if (map[activePage]) return map[activePage];
-  if (activePage === 'Dashboard' && map[filters.brand]) return map[filters.brand];
+  if (globalBrandFilter) return resolveBrandKey(globalBrandFilter);
+  if (store.brandId) return resolveBrandKey(store.brandId);
   return 'archer_academy';
 }
 
@@ -1146,7 +1097,6 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
 
   const headerChip = rootEl.querySelector('.header-brand-chip');
 <<<<<<< HEAD
-<<<<<<< HEAD
   if (headerChip) headerChip.textContent = getGlobalBrandFilterLabel();
 
   const headerBrandFilter = rootEl.querySelector('#global-brand-filter');
@@ -1158,9 +1108,6 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
 =======
   if (headerChip) headerChip.textContent = `Archer ${theme.label}`;
 >>>>>>> parent of 2a9a512 (branding)
-=======
-  if (headerChip) headerChip.textContent = getBrandDisplayName(brandKey, visualSettings);
->>>>>>> parent of bdc6f8e (branding extra)
 }
 
 function errorHasColumn(error, columnName) {
