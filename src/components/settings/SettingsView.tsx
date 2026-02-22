@@ -1,18 +1,22 @@
-import React, { ReactNode } from 'react';
-
-const DEFAULT_ACCENT = '#4d73ff';
+// Settings View Component - Main Settings Container
+import React from 'react';
+import { cn } from '@/lib/utils';
 
 interface SettingsViewProps {
-  children: ReactNode;
   accentColor?: string | null;
+  children: React.ReactNode;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ children, accentColor }) => {
-  const accent = accentColor || DEFAULT_ACCENT;
+const SettingsView: React.FC<SettingsViewProps> = ({ accentColor, children }) => {
+  const style = accentColor ? {
+    '--archer-blue': accentColor,
+    '--archer-dark': accentColor,
+  } as React.CSSProperties : {};
+
   return (
-    <div
-      className="max-w-6xl mx-auto"
-      style={{ '--settings-accent': accent } as React.CSSProperties}
+    <div 
+      className="settings-view min-h-screen bg-neutral-50"
+      style={style}
     >
       {children}
     </div>

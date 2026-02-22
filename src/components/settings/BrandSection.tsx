@@ -1,19 +1,29 @@
+// Brand Section Component - Brand Configuration (Admin Only)
 import React, { useState, useEffect } from 'react';
-import { Palette, Upload, RefreshCw } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { User, BrandSettings, Brand } from '@/types';
+import { Palette, Upload, Save, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { User as UserType, BrandSettings, Brand } from '@/types';
 import { supabase } from '@/lib/supabase';
-
-const DEFAULT_ACCENT = '#4d73ff';
+import toast from 'react-hot-toast';
 
 interface BrandSectionProps {
-  user: User;
+  user: UserType;
 }
 
-const BrandSection: React.FC<BrandSectionProps> = () => {
+const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
   const [brandSettings, setBrandSettings] = useState<BrandSettings[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<{ [key: string]: boolean }>({});
+
+  const defaultBrandColors = {
+    academy: '#4d73ff',
+    invest: '#2d50ef',
+    fund: '#1032cf'
+  };
+
+  useEffect(() => {
+    loadBrandSettings();
+  }, []);
 
   const loadBrandSettings = async () => {
     try {
@@ -26,21 +36,12 @@ const BrandSection: React.FC<BrandSectionProps> = () => {
       setBrandSettings(data || []);
     } catch (error) {
       console.error('Error loading brand settings:', error);
-      toast.error('Kon brandinstellingen niet laden.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadBrandSettings();
-  }, []);
-
-  const updateBrandSetting = async (
-    brand: Brand,
-    field: keyof BrandSettings,
-    value: string | boolean | null
-  ) => {
+  const updateBrandSetting = async (brand: Brand, field: keyof BrandSettings, value: any) => {
     setSaving(brand);
     try {
       const { error } = await supabase
@@ -49,42 +50,57 @@ const BrandSection: React.FC<BrandSectionProps> = () => {
         .eq('brand', brand);
 
       if (error) throw error;
-      setBrandSettings((prev) =>
-        prev.map((s) => (s.brand === brand ? { ...s, [field]: value } : s))
-      );
-      toast.success('Brandinstelling opgeslagen.');
+
+      setBrandSettings(prev => prev.map(setting => 
+        setting.brand === brand ? { ...setting, [field]: value } : setting
+      ));
+      
+      toast.success(`Brand ${brand} bijgewerkt!`);
     } catch (error) {
       console.error('Error updating brand setting:', error);
-      toast.error('Kon brandinstelling niet opslaan.');
+      toast.error('Er is een fout opgetreden bij het bijwerken van de brand instellingen.');
     } finally {
       setSaving(null);
     }
   };
 
   const handleLogoUpload = async (brand: Brand, file: File) => {
+    // For now, just create a preview URL
+    // In a real implementation, you'd upload to Supabase Storage
     const previewUrl = URL.createObjectURL(file);
     await updateBrandSetting(brand, 'logo_url', previewUrl);
   };
 
-  const displayName = (setting: BrandSettings) =>
-    setting.brand_name || setting.brand || String(setting.brand);
+  const resetToDefault = async (brand: Brand) => {
+    await updateBrandSetting(brand, 'accent_color', defaultBrandColors[brand]);
+  };
+
+  const getBrandDisplayName = (brand: Brand) => {
+    switch (brand) {
+      case 'academy': return 'Archer Academy';
+      case 'invest': return 'Archer Invest';
+      case 'fund': return 'Archer Investment Fund';
+      default: return brand;
+    }
+  };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-archer-blue" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-archer-blue"></div>
       </div>
     );
   }
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
+      {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-neutral-900">Brand Management</h2>
             <p className="text-sm text-neutral-600 mt-1">
-              Configureer kleuren en logo&apos;s per merk
+              Configureer kleuren en logo's per merk
             </p>
           </div>
           <button
@@ -97,25 +113,43 @@ const BrandSection: React.FC<BrandSectionProps> = () => {
         </div>
       </div>
 
+      {/* Brand Configuration Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {brandSettings.map((setting) => {
-          const currentColor = setting.accent_color || DEFAULT_ACCENT;
-          const brand = setting.brand;
+        {(['academy', 'invest', 'fund'] as Brand[]).map((brand) => {
+          const settings = brandSettings.find(s => s.brand === brand);
+          const currentColor = settings?.accent_color || defaultBrandColors[brand];
+          
           return (
-            <div
-              key={setting.id}
-              className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
-            >
-              <div
+            <div key={brand} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+              {/* Brand Header */}
+              <div 
                 className="p-6 text-white"
                 style={{ backgroundColor: currentColor }}
               >
-                <h3 className="text-lg font-semibold mb-4">{displayName(setting)}</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">
+                    {getBrandDisplayName(brand)}
+                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setPreviewMode(prev => ({ ...prev, [brand]: !prev[brand] }))}
+                      className="p-2 rounded-lg bg-white bg-opacity-20 hover:bg-opacity-30 transition-colors duration-200"
+                    >
+                      {previewMode[brand] ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Logo Preview */}
                 <div className="flex items-center justify-center h-16 bg-white bg-opacity-10 rounded-lg p-2">
-                  {setting.logo_url ? (
+                  {settings?.logo_url ? (
                     <img
-                      src={setting.logo_url}
-                      alt={`${displayName(setting)} logo`}
+                      src={settings.logo_url}
+                      alt={`${brand} logo`}
                       className="h-full max-w-full object-contain"
                     />
                   ) : (
@@ -124,22 +158,23 @@ const BrandSection: React.FC<BrandSectionProps> = () => {
                 </div>
               </div>
 
+              {/* Configuration Form */}
               <div className="p-6 space-y-6">
+                {/* Brand Name */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Merknaam
                   </label>
                   <input
                     type="text"
-                    value={setting.brand_name || ''}
-                    onChange={(e) =>
-                      updateBrandSetting(brand, 'brand_name', e.target.value || null)
-                    }
+                    value={settings?.brand_name || ''}
+                    onChange={(e) => updateBrandSetting(brand, 'brand_name', e.target.value)}
                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-archer-blue focus:border-archer-blue"
-                    placeholder={brand}
+                    placeholder={getBrandDisplayName(brand)}
                   />
                 </div>
 
+                {/* Accent Color */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Accent Kleur
@@ -149,87 +184,142 @@ const BrandSection: React.FC<BrandSectionProps> = () => {
                       <input
                         type="color"
                         value={currentColor}
-                        onChange={(e) =>
-                          updateBrandSetting(brand, 'accent_color', e.target.value)
-                        }
+                        onChange={(e) => updateBrandSetting(brand, 'accent_color', e.target.value)}
                         className="h-10 w-20 border border-neutral-300 rounded cursor-pointer"
                       />
                       <input
                         type="text"
                         value={currentColor}
-                        onChange={(e) =>
-                          updateBrandSetting(brand, 'accent_color', e.target.value)
-                        }
+                        onChange={(e) => updateBrandSetting(brand, 'accent_color', e.target.value)}
                         className="flex-1 px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-archer-blue focus:border-archer-blue font-mono text-sm"
                         placeholder="#4d73ff"
                       />
                     </div>
+                    <button
+                      onClick={() => resetToDefault(brand)}
+                      className="px-3 py-2 text-sm bg-neutral-100 text-neutral-700 rounded-lg hover:bg-neutral-200 transition-colors duration-200"
+                    >
+                      Reset
+                    </button>
                   </div>
                 </div>
 
+                {/* Logo Upload */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Logo
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleLogoUpload(brand, file);
-                    }}
-                    className="hidden"
-                    id={`logo-upload-${brand}`}
-                  />
-                  <label
-                    htmlFor={`logo-upload-${brand}`}
-                    className="flex items-center justify-center px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors duration-200 w-full"
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload logo
-                  </label>
-                  <p className="text-xs text-neutral-500 mt-1">PNG, JPG of SVG.</p>
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoUpload(brand, file);
+                      }}
+                      className="hidden"
+                      id={`logo-upload-${brand}`}
+                    />
+                    <label
+                      htmlFor={`logo-upload-${brand}`}
+                      className="flex-1 flex items-center justify-center px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors duration-200"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload logo
+                    </label>
+                  </div>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    PNG, JPG of SVG. Aanbevolen: 200x200px.
+                  </p>
                 </div>
 
+                {/* Contact Email */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Contact E-mail
                   </label>
                   <input
                     type="email"
-                    value={setting.email_contact || ''}
-                    onChange={(e) =>
-                      updateBrandSetting(brand, 'email_contact', e.target.value || null)
-                    }
+                    value={settings?.email_contact || ''}
+                    onChange={(e) => updateBrandSetting(brand, 'email_contact', e.target.value)}
                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-archer-blue focus:border-archer-blue"
                     placeholder="events@archer.finance"
                   />
                 </div>
 
+                {/* Status Toggle */}
                 <div>
                   <label className="flex items-center space-x-3">
                     <input
                       type="checkbox"
-                      checked={setting.is_active ?? true}
-                      onChange={(e) =>
-                        updateBrandSetting(brand, 'is_active', e.target.checked)
-                      }
+                      checked={settings?.is_active ?? true}
+                      onChange={(e) => updateBrandSetting(brand, 'is_active', e.target.checked)}
                       className="w-4 h-4 text-archer-blue border-neutral-300 rounded focus:ring-archer-blue"
                     />
-                    <span className="text-sm font-medium text-neutral-700">Merk actief</span>
+                    <span className="text-sm font-medium text-neutral-700">
+                      Merk actief
+                    </span>
                   </label>
                 </div>
 
-                <div className="pt-4 border-t border-neutral-200 text-sm text-neutral-500">
-                  Laatst bijgewerkt:{' '}
-                  {setting.updated_at
-                    ? new Date(setting.updated_at).toLocaleDateString('nl-BE')
-                    : 'Nooit'}
+                {/* Save Button */}
+                <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                  <div className="text-sm text-neutral-500">
+                    Laatst bijgewerkt: {settings?.updated_at 
+                      ? new Date(settings.updated_at).toLocaleDateString('nl-BE')
+                      : 'Nooit'
+                    }
+                  </div>
+                  <button
+                    onClick={() => updateBrandSetting(brand, 'updated_at', new Date().toISOString())}
+                    disabled={saving === brand}
+                    className="flex items-center px-4 py-2 bg-archer-blue text-white rounded-lg hover:bg-archer-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  >
+                    {saving === brand ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Opslaan...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Opslaan
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Preview Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+        <h3 className="text-lg font-semibold text-neutral-900 mb-6">Live Preview</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(['academy', 'invest', 'fund'] as Brand[]).map((brand) => {
+            const settings = brandSettings.find(s => s.brand === brand);
+            const currentColor = settings?.accent_color || defaultBrandColors[brand];
+            
+            return (
+              <div key={brand} className="text-center">
+                <div 
+                  className="rounded-lg p-4 text-white font-semibold mb-2"
+                  style={{ backgroundColor: currentColor }}
+                >
+                  {getBrandDisplayName(brand)}
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div>Kleur: {currentColor}</div>
+                  <div>Logo: {settings?.logo_url ? '✓' : '✗'}</div>
+                  <div>Status: {settings?.is_active !== false ? 'Actief' : 'Inactief'}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
