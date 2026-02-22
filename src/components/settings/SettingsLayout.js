@@ -1,7 +1,6 @@
 // Settings Layout Component - Main Control Center Dashboard
 import { supabase } from "../../supabaseClient.js";
 import { esc, showToast } from "../../utils.js";
-import { getBrandColor, getBrandTheme, computeBrandCssVariables } from "../../config.js";
 
 export function renderSettingsLayout(user, activeSection = 'profile') {
   const isAdmin = user?.role === 'admin';
@@ -40,7 +39,7 @@ export function renderSettingsLayout(user, activeSection = 'profile') {
   return `
     <div class="settings-layout">
       <!-- Sidebar Navigation -->
-      <aside class="settings-sidebar">
+      <aside class="settings-sidebar" id="settings-sidebar">
         <div class="settings-sidebar-header">
           <div class="user-avatar">
             ${user?.avatar_url 
@@ -74,6 +73,11 @@ export function renderSettingsLayout(user, activeSection = 'profile') {
         </div>
       </aside>
 
+      <!-- Mobile Menu Toggle -->
+      <button class="settings-mobile-toggle" id="settings-mobile-toggle">
+        ☰
+      </button>
+
       <!-- Main Content Area -->
       <main class="settings-main">
         <div class="settings-content" id="settings-content">
@@ -89,7 +93,7 @@ export function initializeSettingsLayout(user) {
   if (!settingsContent) return;
 
   // Handle navigation clicks
-  const navItems = settingsContent.closest('.settings-layout').querySelectorAll('.settings-nav-item');
+  const navItems = document.querySelectorAll('.settings-nav-item');
   navItems.forEach(item => {
     item.addEventListener('click', (e) => {
       const section = e.currentTarget.dataset.section;
@@ -104,10 +108,27 @@ export function initializeSettingsLayout(user) {
   });
 
   // Handle back to dashboard
-  const backBtn = settingsContent.closest('.settings-layout').querySelector('.back-to-dashboard');
+  const backBtn = document.querySelector('.back-to-dashboard');
   if (backBtn) {
     backBtn.addEventListener('click', () => {
       window.location.hash = '#dashboard';
+    });
+  }
+
+  // Handle mobile toggle
+  const mobileToggle = document.getElementById('settings-mobile-toggle');
+  const sidebar = document.getElementById('settings-sidebar');
+  
+  if (mobileToggle && sidebar) {
+    mobileToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('mobile-open');
+    });
+
+    // Close sidebar when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!sidebar.contains(e.target) && !mobileToggle.contains(e.target)) {
+        sidebar.classList.remove('mobile-open');
+      }
     });
   }
 
@@ -133,7 +154,7 @@ async function loadSettingsSection(section, user) {
     let content;
     switch (section) {
       case 'profile':
-        const { renderProfileSection } = await import('./ProfileSection.js');
+        const { renderProfileSection } = await import('./ProfileSection.legacy.js');
         content = renderProfileSection(user);
         break;
       case 'brands':
@@ -141,12 +162,12 @@ async function loadSettingsSection(section, user) {
         content = renderBrandSettingsSection(user);
         break;
       case 'team':
-        const { renderTeamPermissionsSection } = await import('./TeamPermissionsSection.js');
-        content = renderTeamPermissionsSection(user);
+        const { renderTeamSection } = await import('./TeamSection.legacy.js');
+        content = renderTeamSection(user);
         break;
       case 'audit':
-        const { renderAuditLogSection } = await import('./AuditLogSection.js');
-        content = renderAuditLogSection(user);
+        const { renderAuditSection } = await import('./AuditSection.legacy.js');
+        content = renderAuditSection(user);
         break;
       default:
         content = '<div class="error-state">Sectie niet gevonden</div>';
@@ -157,7 +178,7 @@ async function loadSettingsSection(section, user) {
     // Initialize section-specific functionality
     switch (section) {
       case 'profile':
-        const { initializeProfileSection } = await import('./ProfileSection.js');
+        const { initializeProfileSection } = await import('./ProfileSection.legacy.js');
         initializeProfileSection(user);
         break;
       case 'brands':
@@ -165,12 +186,12 @@ async function loadSettingsSection(section, user) {
         initializeBrandSettingsSection(user);
         break;
       case 'team':
-        const { initializeTeamPermissionsSection } = await import('./TeamPermissionsSection.js');
-        initializeTeamPermissionsSection(user);
+        const { initializeTeamSection } = await import('./TeamSection.legacy.js');
+        initializeTeamSection(user);
         break;
       case 'audit':
-        const { initializeAuditLogSection } = await import('./AuditLogSection.js');
-        initializeAuditLogSection(user);
+        const { initializeAuditSection } = await import('./AuditSection.legacy.js');
+        initializeAuditSection(user);
         break;
     }
 

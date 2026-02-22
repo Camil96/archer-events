@@ -1,4 +1,4 @@
-// Team & Permissions Section Component - User Management (Admin Only)
+// Team Section Component - Team & Permissions (Admin Only)
 import { supabase } from "../../supabaseClient.js";
 import { esc, showToast } from "../../utils.js";
 import { listAuditLog } from "../../store.js";
@@ -15,7 +15,7 @@ const BRANDS = [
   { id: 'fund', name: 'Archer Investment Fund', color: '#1032cf' }
 ];
 
-export function renderTeamPermissionsSection(user) {
+export function renderTeamSection(user) {
   return `
     <div class="team-section">
       <div class="section-header">
@@ -121,7 +121,7 @@ export function renderTeamPermissionsSection(user) {
   `;
 }
 
-export async function initializeTeamPermissionsSection(user) {
+export async function initializeTeamSection(user) {
   let users = [];
   let filteredUsers = [];
   let currentPage = 1;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
 import { User } from './types';
 import SettingsLayout from './pages/Settings/SettingsLayout';
@@ -81,6 +82,7 @@ function App() {
 
   return (
     <Router>
+      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
       <div className="min-h-screen bg-neutral-50">
         <Routes>
           <Route path="/" element={<Navigate to="/settings" replace />} />
