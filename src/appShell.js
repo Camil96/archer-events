@@ -18,6 +18,10 @@ import {
 import { renderCalendar } from "./calendar.js";
 import { renderSettings } from "./views/settings.js";
 
+// Internal styles
+import "./styles.css";
+import "./styles/settings.css";
+
 // Internal utilities
 import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
 
