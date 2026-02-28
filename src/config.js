@@ -66,7 +66,7 @@ export const BRAND_THEMES = {
     shellGradientStart: "#f6f9ff",
     shellGradientEnd: "#eaf0ff",
     focusRing: "rgba(45, 80, 239, 0.24)",
-    logoWordmark: "/archer-wordmark.png",
+    logoWordmark: "/brands/invest-logo.svg",
     logoIcon: "/Icon_Blue.png",
   },
   archer_fund: {
@@ -100,7 +100,7 @@ export const BRAND_THEMES = {
     shellGradientStart: "#f7f9ff",
     shellGradientEnd: "#e7eeff",
     focusRing: "rgba(16, 50, 207, 0.24)",
-    logoWordmark: "/archer-wordmark.png",
+    logoWordmark: "/brands/fund-logo.png",
     logoIcon: "/Icon_Blue.png",
   },
 };

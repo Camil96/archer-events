@@ -16,7 +16,7 @@ const Login: React.FC = () => {
       const { error: signInError } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/settings`,
+          emailRedirectTo: `${window.location.origin}/`,
         },
       });
 
@@ -26,7 +26,7 @@ const Login: React.FC = () => {
 
       setSent(true);
     } catch (err: any) {
-      setError(err?.message || 'Kon geen login link versturen. Probeer opnieuw.');
+      setError(err?.message || 'Kon geen link versturen. Probeer opnieuw.');
     } finally {
       setLoading(false);
     }
@@ -44,7 +44,7 @@ const Login: React.FC = () => {
           />
           <p className="mt-4 text-sm tracking-[0.18em] uppercase text-neutral-600">Archer Events</p>
           <h1 className="mt-2 text-3xl font-bold text-neutral-900">Log in met je e-mailadres</h1>
-          <p className="mt-2 text-neutral-700">We sturen je een beveiligde login-link.</p>
+          <p className="mt-2 text-neutral-700">We sturen je een beveiligde link.</p>
         </div>
 
         {error && (
@@ -55,7 +55,7 @@ const Login: React.FC = () => {
 
         {sent ? (
           <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            Login-link verzonden. Controleer je mailbox en open de link.
+            Link verzonden. Controleer je mailbox en open de link.
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -76,15 +76,21 @@ const Login: React.FC = () => {
               disabled={loading}
               className="w-full rounded-xl bg-archer-blue text-white px-4 py-3 font-semibold tracking-wide hover:bg-archer-dark transition disabled:opacity-60"
             >
-              {loading ? 'Verzenden...' : 'Stuur login-link'}
+              {loading ? 'Verzenden...' : 'Stuur link'}
             </button>
           </form>
         )}
 
-        <div className="mt-7 grid grid-cols-3 gap-2 text-xs text-neutral-600">
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 py-2 text-center">Academy</div>
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 py-2 text-center">Invest</div>
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 py-2 text-center">Investment Fund</div>
+        <div className="mt-7 grid grid-cols-3 gap-2">
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2">
+            <img src="/archer-wordmark.png" alt="Archer Academy" className="max-h-5 w-auto object-contain" />
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2">
+            <img src="/brands/invest-logo.svg" alt="Archer Invest" className="max-h-4 w-auto object-contain" />
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2">
+            <img src="/brands/fund-logo.png" alt="Archer Investment Fund" className="max-h-6 w-auto object-contain" />
+          </div>
         </div>
       </div>
     </div>

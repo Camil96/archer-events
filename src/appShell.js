@@ -12,18 +12,11 @@ import {
   store
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
-<<<<<<< HEAD
 import { renderSettings } from "./views/settings.js";
 
 // Internal styles
 import "./styles.css";
-import "./styles/settings.css";
-
-// Internal utilities
-=======
->>>>>>> parent of 9acc053 (windsurf)
 import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
-import { renderSettings } from "./views/settings.js";
 import {
   getBrandColor,
   getBrandDbValue,

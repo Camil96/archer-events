@@ -4,6 +4,12 @@ import "./styles.css";
 
 const root = document.getElementById("root");
 
+function getAuthRedirectUrl() {
+  const envUrl = import.meta.env.VITE_APP_URL?.trim();
+  const base = envUrl || window.location.origin;
+  return base.replace(/\/+$/, "") + "/";
+}
+
 /* robust auth initialization */
 async function init() {
   try {
@@ -28,6 +34,9 @@ init();
 function renderLogin(container) {
   const base = import.meta.env.BASE_URL || '/';
   const logoUrl = `${base}archer-wordmark.png`;
+  const academyLogo = `${base}archer-wordmark.png`;
+  const investLogo = `${base}brands/invest-logo.svg`;
+  const fundLogo = `${base}brands/fund-logo.png`;
 
   container.innerHTML = `
     <div style="
@@ -40,7 +49,7 @@ function renderLogin(container) {
     ">
       <div class="card login-card" style="
         width:100%;
-        max-width:560px;
+        max-width:620px;
         padding:58px 42px 34px;
         border-radius:26px;
         background:#ffffff;
@@ -69,13 +78,30 @@ function renderLogin(container) {
             "
           />
 
+          <p style="
+            margin:0;
+            font-family:Inter,system-ui,-apple-system,sans-serif;
+            letter-spacing:.16em;
+            text-transform:uppercase;
+            font-size:.95rem;
+            color:#5f6c78;
+          ">ARCHER EVENTS</p>
+
+          <h1 style="
+            margin:0;
+            font-family:Inter,system-ui,-apple-system,sans-serif;
+            font-size:clamp(2rem,4.8vw,3rem);
+            line-height:1.05;
+            color:#000000;
+          ">Log in met je e-mailadres</h1>
+
           <p id="login-headline" style="
             margin:0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
             font-size:1.1rem;
             line-height:1.55;
             color:#2d3036;
-          ">Vul je e-mailadres in om toegang te krijgen.</p>
+          ">We sturen je een beveiligde link.</p>
 
           <form id="login-form" style="
             width:100%;
@@ -119,18 +145,27 @@ function renderLogin(container) {
                 cursor:pointer;
               "
             >
-              Inloggen
+              Stuur link
             </button>
           </form>
 
-          <p id="login-footer" style="
-            margin:6px 0 0;
-            font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:0.95rem;
-            color:rgba(45,48,54,0.75);
+          <div id="brand-logos" style="
+            width:100%;
+            margin-top:4px;
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:12px;
           ">
-            Vragen? Mail <a href="mailto:camilsahnoune@gmail.com" style="color:#4d73ff;text-decoration:none;">camilsahnoune@gmail.com</a>
-          </p>
+            <div style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;">
+              <img src="${academyLogo}" alt="Archer Academy" style="max-width:100%;max-height:30px;object-fit:contain;" />
+            </div>
+            <div style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;">
+              <img src="${investLogo}" alt="Archer Invest" style="max-width:100%;max-height:22px;object-fit:contain;" />
+            </div>
+            <div style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;">
+              <img src="${fundLogo}" alt="Archer Investment Fund" style="max-width:100%;max-height:36px;object-fit:contain;" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -141,7 +176,7 @@ function renderLogin(container) {
 
   const headlineEl = container.querySelector('#login-headline');
   const form = container.querySelector('#login-form');
-  const footer = container.querySelector('#login-footer');
+  const brandLogos = container.querySelector('#brand-logos');
   const btn = container.querySelector('#login-btn');
   const emailInput = container.querySelector('#login-email');
 
@@ -158,18 +193,19 @@ function renderLogin(container) {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: getAuthRedirectUrl() },
     });
 
     if (error) {
       btn.disabled = false;
-      btn.textContent = 'Inloggen';
+      btn.textContent = 'Stuur link';
+      headlineEl.textContent = error.message || 'Er ging iets mis. Probeer opnieuw.';
       return;
     }
 
-    // Resultaat na submit: alleen logo + "Check je mailbox."
-    headlineEl.textContent = 'Check je mailbox.';
+    // Resultaat na submit: alleen logo + statusmelding.
+    headlineEl.textContent = 'Link verzonden. Check je mailbox.';
     form.style.display = 'none';
-    footer.style.display = 'none';
+    brandLogos.style.display = 'none';
   });
 }
