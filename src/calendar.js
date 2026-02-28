@@ -1,7 +1,9 @@
-/**
- * Archer Events Calendar Module
- * Provides month and year view rendering for events
- */
+/* 
+  ARCHER CALENDAR MODULE 📅
+  - Year View (Heatmap style)
+  - Month View (Detail grid)
+  - Full Navigation
+*/
 import { getBrandColor } from "./config.js";
 
 const MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];

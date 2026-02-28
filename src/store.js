@@ -174,11 +174,6 @@ export async function listEvents(filters = {}) {
   return data.map(e => ({ ...e, start_at: e.start_at || e.event_date }));
 }
 
-/**
- * Imports the 2026 event catalog into the database
- * Applies corrections to existing events and adds missing ones
- * @returns {Object} Import statistics with inserted, skipped, corrected, and invalid counts
- */
 export async function importEventCatalog2026() {
   const rows = EVENT_CATALOG_2026.map(sanitizeCatalogEventRow).filter(Boolean);
   const invalidRows = EVENT_CATALOG_2026.length - rows.length;

@@ -1,7 +1,4 @@
-// External dependencies
 import { supabase } from "./supabaseClient.js";
-
-// Internal store functions
 import {
   listEvents, createEvent, updateEvent, deleteEvent,
   listTasks, createTask, updateTask, deleteTask,
@@ -14,9 +11,8 @@ import {
   importEventCatalog2026,
   store
 } from "./store.js";
-
-// Internal components
 import { renderCalendar } from "./calendar.js";
+<<<<<<< HEAD
 import { renderSettings } from "./views/settings.js";
 
 // Internal styles
@@ -24,9 +20,10 @@ import "./styles.css";
 import "./styles/settings.css";
 
 // Internal utilities
+=======
+>>>>>>> parent of 9acc053 (windsurf)
 import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
-
-// Internal config
+import { renderSettings } from "./views/settings.js";
 import {
   getBrandColor,
   getBrandDbValue,
@@ -74,11 +71,7 @@ const DEFAULT_ONLINE_LOCATION_PRESETS = [
   { label: 'Webex', location: 'Online - Webex', url: 'https://webex.com/meet/' }
 ];
 
-/**
- * Renders the main application shell with sidebar, navigation, and content area
- * @param {HTMLElement} root - The root DOM element to render the app shell into
- * @param {Object} session - The current user session object
- */
+// ─── APP SHELL ───────────────────────────────────────────────
 export function renderAppShell(root, session) {
   rootEl = root;
   render();
@@ -368,10 +361,7 @@ function renderEventList(container, events) {
   container.appendChild(grid);
 }
 
-/**
- * Opens the event modal for creating or editing events
- * @param {Object|null} event - The event object to edit, or null for creating a new event
- */
+// ─── MODAL ───────────────────────────────────────────────────
 async function openModal(event) {
   const isEdit = !!event;
   const initialBrand = event?.brand || globalBrandFilter || getBrandDbValue(store.brandId || "Academy");
