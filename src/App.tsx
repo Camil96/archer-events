@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-<<<<<<< HEAD
 import { Toaster } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import { User } from '@/types';
@@ -15,11 +14,6 @@ import CalendarPage from '@/pages/Events/CalendarPage';
 import SettingsLayout from '@/pages/Settings/SettingsLayout';
 import AppShell from '@/components/layout/AppShell';
 import Spinner from '@/components/common/Spinner';
-=======
-import { supabase } from './lib/supabase';
-import { User } from './types';
-import SettingsLayout from './pages/Settings/SettingsLayout';
->>>>>>> parent of 9cc48ba (cursor)
 
 const AUTH_TIMEOUT_MS = 8000;
 
@@ -118,7 +112,6 @@ function App() {
 
   return (
     <Router>
-<<<<<<< HEAD
       <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
@@ -146,16 +139,6 @@ function App() {
           }
         />
       </Routes>
-=======
-      <div className="min-h-screen bg-neutral-50">
-        <Routes>
-          <Route path="/" element={<Navigate to="/settings" replace />} />
-          <Route path="/settings/*" element={<SettingsLayout user={user} />} />
-          {/* Add other routes as needed */}
-          <Route path="*" element={<Navigate to="/settings" replace />} />
-        </Routes>
-      </div>
->>>>>>> parent of 9cc48ba (cursor)
     </Router>
   );
 }

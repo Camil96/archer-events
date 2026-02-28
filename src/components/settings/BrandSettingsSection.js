@@ -1,7 +1,6 @@
 // Brand Settings Section Component - Brand Configuration (Admin Only)
 import { supabase } from "../../supabaseClient.js";
 import { esc, showToast } from "../../utils.js";
-import { getBrandColor, getBrandTheme } from "../../config.js";
 
 const BRANDS = [
   { id: 'academy', name: 'Archer Academy', icon: '🎓' },
@@ -78,7 +77,7 @@ export async function initializeBrandSettingsSection(user) {
     `;
 
     try {
-      // Fetch brand settings
+      // Fetch brand settings from database
       const { data, error } = await supabase
         .from('brand_settings')
         .select('*')
@@ -92,7 +91,7 @@ export async function initializeBrandSettingsSection(user) {
       brandData = data || {
         brand: brandId,
         brand_name: BRANDS.find(b => b.id === brandId)?.name || '',
-        accent_color: getBrandColor(brandId),
+        accent_color: '#4d73ff', // Default Archer Electric Blue
         logo_url: '',
         logo_wordmark_url: '',
         email_contact: 'events@archer.finance',
@@ -280,7 +279,7 @@ export async function initializeBrandSettingsSection(user) {
     // Reset color to default
     if (colorResetBtn) {
       colorResetBtn.addEventListener('click', () => {
-        const defaultColor = getBrandColor(brand.brand);
+        const defaultColor = '#4d73ff'; // Archer Electric Blue
         if (colorInput) colorInput.value = defaultColor;
         if (colorPreview) colorPreview.value = defaultColor;
         updatePreview();

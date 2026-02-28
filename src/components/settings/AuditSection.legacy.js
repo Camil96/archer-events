@@ -1,4 +1,4 @@
-// Audit Log Section Component - System Activity Logging (Admin Only)
+// Audit Section Component - System Activity Logging (Admin Only)
 import { supabase } from "../../supabaseClient.js";
 import { esc, showToast } from "../../utils.js";
 import { listAuditLog } from "../../store.js";
@@ -15,7 +15,7 @@ const RESOURCES = [
   'profiles', 'brand_settings', 'events', 'tasks', 'participants'
 ];
 
-export function renderAuditLogSection(user) {
+export function renderAuditSection(user) {
   return `
     <div class="audit-section">
       <div class="section-header">
@@ -123,7 +123,7 @@ export function renderAuditLogSection(user) {
   `;
 }
 
-export async function initializeAuditLogSection(user) {
+export async function initializeAuditSection(user) {
   let auditLogs = [];
   let filteredLogs = [];
   let currentPage = 1;
