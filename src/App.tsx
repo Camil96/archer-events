@@ -16,91 +16,37 @@ import Spinner from '@/components/common/Spinner';
 import FinanceOverview from '@/pages/Finance/FinanceOverview';
 import MyProfile from '@/pages/Users/MyProfile';
 
-const AUTH_TIMEOUT_MS = 8000;
-
-async function withTimeout<T>(promiseLike: PromiseLike<T>, timeoutMs: number): Promise<T | null> {
-  return Promise.race([
-    Promise.resolve(promiseLike),
-    new Promise<null>((resolve) => {
-      window.setTimeout(() => resolve(null), timeoutMs);
-    }),
-  ]);
-}
-
-function mapAuthFallback(authUser: any): User {
-  return mapProfile({
-    id: authUser.id,
-    email: authUser.email || '',
-    full_name: authUser.user_metadata?.full_name || authUser.email || 'Gebruiker',
-    role: authUser.user_metadata?.role || 'viewer',
-    brand_access: authUser.user_metadata?.brand_access || ['academy', 'invest', 'fund'],
-    is_active: true,
-    last_sign_in_at: authUser.last_sign_in_at || null,
-    language_pref: 'nl',
-  });
-}
-
-async function resolveUserFromSessionUser(sessionUser: any): Promise<User> {
-  const profileResult = await withTimeout<any>(
-    supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle(),
-    AUTH_TIMEOUT_MS
-  );
-
-  if (profileResult?.data) {
-    return mapProfile(profileResult.data);
-  }
-
-  return mapAuthFallback(sessionUser);
-}
-
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
-
     const getSession = async () => {
       try {
-        const sessionResult = await withTimeout<any>(supabase.auth.getSession(), AUTH_TIMEOUT_MS);
-        const session = sessionResult?.data?.session ?? null;
-
+        const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const resolvedUser = await resolveUserFromSessionUser(session.user);
-          if (isMounted) setUser(resolvedUser);
-        } else if (isMounted) {
-          setUser(null);
+          const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+          if (data) setUser(mapProfile(data));
         }
       } catch (error) {
         console.error('Error getting session:', error);
-        if (isMounted) setUser(null);
       } finally {
-        if (isMounted) setLoading(false);
+        setLoading(false);
       }
     };
 
     getSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const resolvedUser = await resolveUserFromSessionUser(session.user);
-          if (isMounted) setUser(resolvedUser);
-        } else if (event === 'SIGNED_OUT' && isMounted) {
-          setUser(null);
-        }
-      } catch (error) {
-        console.error('Error handling auth state change:', error);
-        if (isMounted && event === 'SIGNED_IN' && session?.user) {
-          setUser(mapAuthFallback(session.user));
-        }
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+        if (data) setUser(mapProfile(data));
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
       }
     });
 
-    return () => {
-      isMounted = false;
-      authListener?.subscription.unsubscribe();
-    };
+    return () => authListener?.subscription.unsubscribe();
   }, []);
 
   if (loading) {
