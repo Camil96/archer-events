@@ -211,8 +211,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ user }) => {
           <div className="text-center p-4 bg-neutral-50 rounded-lg">
             <p className="text-sm font-medium text-neutral-900 mb-1">Rol</p>
             <p className="text-xs text-neutral-600 capitalize">
-              {user.role === 'superadmin' ? 'Superadmin' :
-               user.role === 'admin' ? 'Administrator' :
+              {user.role === 'admin' ? 'Administrator' :
                user.role === 'operations' ? 'Operations' : 'Viewer'}
             </p>
           </div>
