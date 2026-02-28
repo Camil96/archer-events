@@ -67,7 +67,22 @@ const DEFAULT_ONLINE_LOCATION_PRESETS = [
 // ─── APP SHELL ───────────────────────────────────────────────
 export function renderAppShell(root, session) {
   rootEl = root;
-  render();
+  render().catch((error) => {
+    console.error("App shell render failed:", error);
+    if (rootEl) {
+      rootEl.innerHTML = `
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f4f4f4;">
+          <div style="max-width:640px;width:100%;background:#fff;border:1px solid #d6dde6;border-radius:16px;padding:24px;font-family:Inter,system-ui,-apple-system,sans-serif;">
+            <h2 style="margin:0 0 12px;color:#000;">Er ging iets mis bij het laden</h2>
+            <p style="margin:0 0 16px;color:#2d3036;">Herlaad de pagina of log opnieuw in.</p>
+            <button id="archer-reload-btn" style="border:none;background:#0000ff;color:#fff;border-radius:10px;padding:10px 14px;cursor:pointer;">Herlaad</button>
+          </div>
+        </div>
+      `;
+      const reloadBtn = rootEl.querySelector("#archer-reload-btn");
+      if (reloadBtn) reloadBtn.onclick = () => window.location.reload();
+    }
+  });
 }
 
 async function render() {
@@ -1086,6 +1101,11 @@ function getActivePageTitle() {
   if (activePage === 'Calendar') return 'Kalender';
   if (activePage === 'Dashboard') return 'Dashboard';
   return 'Dashboard';
+}
+
+function getGlobalBrandFilterLabel() {
+  if (!globalBrandFilter) return 'Alle merken';
+  return getBrandDisplayName(globalBrandFilter);
 }
 
 function resolveShellBrandKey() {
