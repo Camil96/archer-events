@@ -11,7 +11,8 @@ import {
   listBrands, createBrand, updateBrand,
   listAvailableUsers, listAuditLog, getDashboardStats,
   assignTask, unassignTask,
-  importEventCatalog2026
+  importEventCatalog2026,
+  store
 } from "./store.js";
 
 // Internal components
@@ -47,6 +48,7 @@ let rootEl;
 let filters = { brand: '', search: '', period: '' };
 let catalogImportStarted = false;
 let brandVisualSettingsById = {};
+let globalBrandFilter = getBrandDbValue(store.brandId || "Academy");
 
 const DEFAULT_EVENT_TITLE_PRESETS = [
   'Performance sessie',
@@ -84,16 +86,23 @@ export function renderAppShell(root, session) {
 
 async function render() {
   brandVisualSettingsById = await fetchBrandVisualSettings();
-  const isListView = ['Dashboard', 'Academy', 'Invest', 'Fund'].includes(activePage);
+  filters.brand = globalBrandFilter || '';
+  const canManageEvents = ['Dashboard', 'Calendar'].includes(activePage);
   const shellBrandKey = resolveShellBrandKey();
   const shellBrandVisual = getBrandVisualSettings(shellBrandKey);
   const shellThemeVars = getBrandCssVars(shellBrandKey, shellBrandVisual);
-  const shellBrandDisplay = getBrandDisplayName(shellBrandKey, shellBrandVisual);
+  const shellBrandDisplay = getGlobalBrandFilterLabel();
   const shellWordmark = shellBrandVisual.logo_url?.trim() || getBrandLogoWordmark(shellBrandKey);
   const shellIcon = getBrandLogoIcon(shellBrandKey);
   const academyNavLabel = getBrandFilterOptionLabel('archer_academy');
   const investNavLabel = getBrandFilterOptionLabel('archer_invest');
   const fundNavLabel = getBrandFilterOptionLabel('archer_fund');
+  const globalBrandOptions = `
+    <option value="">Alle merken</option>
+    <option value="Academy" ${globalBrandFilter === "Academy" ? "selected" : ""}>${esc(academyNavLabel)}</option>
+    <option value="Invest" ${globalBrandFilter === "Invest" ? "selected" : ""}>${esc(investNavLabel)}</option>
+    <option value="Fund" ${globalBrandFilter === "Fund" ? "selected" : ""}>${esc(fundNavLabel)}</option>
+  `;
   const pageTitle = getActivePageTitle();
 
   rootEl.innerHTML = `
@@ -109,9 +118,9 @@ async function render() {
 
         <div class="nav-section">
           <div class="nav-label">Contexten</div>
-          <a class="nav-item ${activePage === 'Academy' ? 'active' : ''}" data-page="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
-          <a class="nav-item ${activePage === 'Invest' ? 'active' : ''}" data-page="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
-          <a class="nav-item ${activePage === 'Fund' ? 'active' : ''}" data-page="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
+          <a class="nav-item nav-brand-item ${globalBrandFilter === 'Academy' ? 'active' : ''}" data-brand="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
+          <a class="nav-item nav-brand-item ${globalBrandFilter === 'Invest' ? 'active' : ''}" data-brand="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
+          <a class="nav-item nav-brand-item ${globalBrandFilter === 'Fund' ? 'active' : ''}" data-brand="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
         </div>
 
         <div class="nav-section">
@@ -134,11 +143,16 @@ async function render() {
               <h1>${esc(pageTitle)}</h1>
               <span class="header-brand-chip">${esc(shellBrandDisplay)}</span>
             </div>
-            ${isListView || activePage === 'Calendar' ? `
-              <div class="header-actions-row">
-                <button id="export-csv" class="btn-secondary">⬇ Export CSV</button>
-                <button id="add-event" class="btn-primary">+ Nieuw event</button>
-              </div>` : ''}
+            <div class="header-actions-row">
+              <label class="header-brand-filter">
+                <span>Merkfilter</span>
+                <select id="global-brand-filter" class="header-brand-select">
+                  ${globalBrandOptions}
+                </select>
+              </label>
+              ${canManageEvents ? `<button id="export-csv" class="btn-secondary">⬇ Export CSV</button>` : ""}
+              ${canManageEvents ? `<button id="add-event" class="btn-primary">+ Nieuw event</button>` : ""}
+            </div>
           </div>
           <div id="content-area"></div>
         </div>
@@ -168,10 +182,19 @@ async function render() {
   };
 
   // Navigation handlers
-  rootEl.querySelectorAll('.nav-item').forEach(el => el.onclick = () => {
+  rootEl.querySelectorAll('.nav-item[data-page]').forEach(el => el.onclick = () => {
     closeSidebar();
     activePage = el.dataset.page;
-    filters = { brand: ['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : '', search: '', period: '' };
+    filters = { brand: globalBrandFilter || '', search: '', period: '' };
+    render();
+  });
+
+  rootEl.querySelectorAll('.nav-brand-item').forEach(el => el.onclick = () => {
+    closeSidebar();
+    globalBrandFilter = el.dataset.brand || '';
+    filters = { brand: globalBrandFilter || '', search: '', period: '' };
+    if (globalBrandFilter) store.brandId = getBrandId(globalBrandFilter);
+    activePage = 'Dashboard';
     render();
   });
 
@@ -209,9 +232,20 @@ async function render() {
   // Export CSV
   const exportBtn = rootEl.querySelector('#export-csv');
   if (exportBtn) exportBtn.onclick = async () => {
-    const events = await listEvents(filters);
+    const events = await listEvents(getActiveEventFilters());
     downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
+
+  const globalBrandFilterEl = rootEl.querySelector('#global-brand-filter');
+  if (globalBrandFilterEl) {
+    globalBrandFilterEl.onchange = async () => {
+      globalBrandFilter = globalBrandFilterEl.value || '';
+      filters.brand = globalBrandFilter || '';
+      if (globalBrandFilter) store.brandId = getBrandId(globalBrandFilter);
+      syncShellBrandDecor(resolveShellBrandKey());
+      await loadContent();
+    };
+  }
 
   if (!catalogImportStarted) {
     catalogImportStarted = true;
@@ -225,20 +259,16 @@ async function render() {
 async function loadContent() {
   const container = rootEl.querySelector('#content-area');
   container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const activeFilters = getActiveEventFilters();
 
   try {
     if (activePage === 'Admin') {
       await renderSettings(container);
     } else if (activePage === 'Calendar') {
-      const events = await listEvents();
+      const events = await listEvents(activeFilters);
       renderCalendar(container, events, (ev) => openModal(ev));
-    } else if (activePage === 'Dashboard') {
-      await renderDashboard(container);
     } else {
-      // Brand pages
-      filters.brand = activePage;
-      const events = await listEvents(filters);
-      renderFilters(container, events);
+      await renderDashboard(container);
     }
   } catch (e) {
     container.innerHTML = `<div class="card error-card"><p>⚠ Fout bij laden: ${esc(e.message)}</p></div>`;
@@ -247,9 +277,10 @@ async function loadContent() {
 
 // ─── DASHBOARD ───────────────────────────────────────────────
 async function renderDashboard(container) {
+  const activeFilters = getActiveEventFilters();
   const [stats, events] = await Promise.all([
-    getDashboardStats(),
-    listEvents(filters)
+    getDashboardStats({ brand: activeFilters.brand }),
+    listEvents(activeFilters)
   ]);
 
   container.innerHTML = `
@@ -265,21 +296,10 @@ async function renderDashboard(container) {
 
 // ─── FILTERS ─────────────────────────────────────────────────
 function renderFilters(container, initialEvents) {
-  const academyLabel = getBrandFilterOptionLabel('archer_academy');
-  const investLabel = getBrandFilterOptionLabel('archer_invest');
-  const fundLabel = getBrandFilterOptionLabel('archer_fund');
-
   const filterSection = document.createElement('div');
   filterSection.innerHTML = `
     <div class="filter-bar">
       <input type="text" id="f-search" placeholder="🔍 Zoeken op titel..." value="${esc(filters.search)}" class="filter-input">
-      ${activePage === 'Dashboard' ? `
-      <select id="f-brand" class="filter-select">
-        <option value="">Alle merken</option>
-        <option value="Academy" ${filters.brand === 'Academy' ? 'selected' : ''}>${esc(academyLabel)}</option>
-        <option value="Invest" ${filters.brand === 'Invest' ? 'selected' : ''}>${esc(investLabel)}</option>
-        <option value="Fund" ${filters.brand === 'Fund' ? 'selected' : ''}>${esc(fundLabel)}</option>
-      </select>` : ''}
       <select id="f-period" class="filter-select">
         <option value="">Alle periodes</option>
         <option value="month" ${filters.period === 'month' ? 'selected' : ''}>Deze maand</option>
@@ -295,20 +315,14 @@ function renderFilters(container, initialEvents) {
 
   const applyFilters = async () => {
     filters.search = container.querySelector('#f-search').value;
-    if (activePage === 'Dashboard') {
-      filters.brand = container.querySelector('#f-brand').value;
-      const dashboardBrandKey = filters.brand ? resolveBrandKey(filters.brand) : 'archer_academy';
-      syncShellBrandDecor(dashboardBrandKey);
-    }
     filters.period = container.querySelector('#f-period').value;
 
     listArea.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
-    const events = await listEvents(filters);
+    const events = await listEvents(getActiveEventFilters());
     renderEventList(listArea, events);
   };
 
   container.querySelector('#f-search').oninput = applyFilters;
-  if (activePage === 'Dashboard') container.querySelector('#f-brand').onchange = applyFilters;
   container.querySelector('#f-period').onchange = applyFilters;
 }
 
@@ -360,7 +374,7 @@ function renderEventList(container, events) {
  */
 async function openModal(event) {
   const isEdit = !!event;
-  const initialBrand = event?.brand || (['Academy', 'Invest', 'Fund'].includes(activePage) ? activePage : 'Academy');
+  const initialBrand = event?.brand || globalBrandFilter || getBrandDbValue(store.brandId || "Academy");
   const selectedBrandValue = getBrandDbValue(initialBrand);
   const initialBrandKey = resolveBrandKey(initialBrand);
   const initialBrandVisual = getBrandVisualSettings(initialBrandKey);
@@ -1064,26 +1078,24 @@ function applyInlineCssVariables(element, variables = {}) {
   });
 }
 
+function getActiveEventFilters() {
+  return {
+    brand: globalBrandFilter || '',
+    search: filters.search || '',
+    period: filters.period || '',
+  };
+}
+
 function getActivePageTitle() {
   if (activePage === 'Admin') return 'Instellingen';
   if (activePage === 'Calendar') return 'Kalender';
-
-  if (activePage === 'Academy') return getBrandFilterOptionLabel('archer_academy');
-  if (activePage === 'Invest') return getBrandFilterOptionLabel('archer_invest');
-  if (activePage === 'Fund') return getBrandFilterOptionLabel('archer_fund');
-
-  return activePage;
+  if (activePage === 'Dashboard') return 'Dashboard';
+  return 'Dashboard';
 }
 
 function resolveShellBrandKey() {
-  const map = {
-    Academy: 'archer_academy',
-    Invest: 'archer_invest',
-    Fund: 'archer_fund',
-  };
-
-  if (map[activePage]) return map[activePage];
-  if (activePage === 'Dashboard' && map[filters.brand]) return map[filters.brand];
+  if (globalBrandFilter) return resolveBrandKey(globalBrandFilter);
+  if (store.brandId) return resolveBrandKey(store.brandId);
   return 'archer_academy';
 }
 
@@ -1103,7 +1115,14 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   if (headerIcon) headerIcon.src = theme.logoIcon;
 
   const headerChip = rootEl.querySelector('.header-brand-chip');
-  if (headerChip) headerChip.textContent = getBrandDisplayName(brandKey, visualSettings);
+  if (headerChip) headerChip.textContent = getGlobalBrandFilterLabel();
+
+  const headerBrandFilter = rootEl.querySelector('#global-brand-filter');
+  if (headerBrandFilter) headerBrandFilter.value = globalBrandFilter || '';
+
+  rootEl.querySelectorAll('.nav-brand-item').forEach((item) => {
+    item.classList.toggle('active', item.dataset.brand === globalBrandFilter);
+  });
 }
 
 function errorHasColumn(error, columnName) {

@@ -390,22 +390,58 @@ export async function listAuditLog(limit = 50) {
 }
 
 /* ─── STATS ─── */
-export async function getDashboardStats() {
+export async function getDashboardStats(filters = {}) {
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1).toISOString();
   const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const brandFilterValues = getBrandFilterValues(filters.brand);
+  const applyBrandFilter = (query) => {
+    if (brandFilterValues.length === 1) return query.eq('brand', brandFilterValues[0]);
+    if (brandFilterValues.length > 1) return query.in('brand', brandFilterValues);
+    return query;
+  };
 
-  const [eventsRes, upcomingRes, participantsRes, tasksRes] = await Promise.allSettled([
-    supabase.from('events').select('id', { count: 'exact' }).is('deleted_at', null).gte('start_at', startOfYear),
-    supabase.from('events').select('id', { count: 'exact' }).is('deleted_at', null).gte('start_at', now.toISOString()).lte('start_at', in30Days),
-    supabase.from('event_participants').select('id', { count: 'exact' }).eq('status', 'confirmed'),
-    supabase.from('tasks').select('id', { count: 'exact' }).is('deleted_at', null).neq('status', 'done'),
-  ]);
+  const eventsCountQuery = applyBrandFilter(
+    supabase.from('events').select('id', { count: 'exact' }).is('deleted_at', null).gte('start_at', startOfYear)
+  );
+  const upcomingCountQuery = applyBrandFilter(
+    supabase.from('events').select('id', { count: 'exact' }).is('deleted_at', null).gte('start_at', now.toISOString()).lte('start_at', in30Days)
+  );
+
+  const [eventsRes, upcomingRes] = await Promise.allSettled([eventsCountQuery, upcomingCountQuery]);
+
+  let confirmedParticipants = 0;
+  let openTasks = 0;
+
+  if (!brandFilterValues.length) {
+    const [participantsRes, tasksRes] = await Promise.allSettled([
+      supabase.from('event_participants').select('id', { count: 'exact' }).eq('status', 'confirmed'),
+      supabase.from('tasks').select('id', { count: 'exact' }).is('deleted_at', null).neq('status', 'done'),
+    ]);
+    confirmedParticipants = participantsRes.status === 'fulfilled' ? (participantsRes.value.count || 0) : 0;
+    openTasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.count || 0) : 0;
+  } else {
+    const { data: eventRows, error: eventIdsError } = await applyBrandFilter(
+      supabase.from('events').select('id').is('deleted_at', null)
+    );
+
+    if (!eventIdsError) {
+      const eventIds = (eventRows || []).map((row) => row.id).filter(Boolean);
+      if (eventIds.length) {
+        const [participantsRes, tasksRes] = await Promise.allSettled([
+          supabase.from('event_participants').select('id', { count: 'exact' }).eq('status', 'confirmed').in('event_id', eventIds),
+          supabase.from('tasks').select('id', { count: 'exact' }).is('deleted_at', null).neq('status', 'done').in('event_id', eventIds),
+        ]);
+        confirmedParticipants = participantsRes.status === 'fulfilled' ? (participantsRes.value.count || 0) : 0;
+        openTasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.count || 0) : 0;
+      }
+    }
+  }
 
   return {
     totalEvents: eventsRes.status === 'fulfilled' ? (eventsRes.value.count || 0) : 0,
     upcomingEvents: upcomingRes.status === 'fulfilled' ? (upcomingRes.value.count || 0) : 0,
-    confirmedParticipants: participantsRes.status === 'fulfilled' ? (participantsRes.value.count || 0) : 0,
-    openTasks: tasksRes.status === 'fulfilled' ? (tasksRes.value.count || 0) : 0,
+    confirmedParticipants,
+    openTasks,
   };
 }
