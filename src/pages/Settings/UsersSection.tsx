@@ -1,13 +1,13 @@
 import React from 'react';
 import { User as UserType } from '@/types';
-import TeamSection from '@/components/settings/TeamSection';
+import UserManagement from '@/pages/Users/UserManagement';
 
 interface UsersSectionProps {
   user: UserType;
 }
 
 const UsersSection: React.FC<UsersSectionProps> = ({ user }) => {
-  return <TeamSection user={user} />;
+  return <UserManagement user={user} />;
 };
 
 export default UsersSection;

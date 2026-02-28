@@ -117,6 +117,7 @@ const TeamSection: React.FC<TeamSectionProps> = ({ user }) => {
 
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
+      case 'superadmin': return 'bg-purple-100 text-purple-800';
       case 'admin': return 'bg-red-100 text-red-800';
       case 'operations': return 'bg-blue-100 text-blue-800';
       case 'viewer': return 'bg-gray-100 text-gray-800';
@@ -126,6 +127,7 @@ const TeamSection: React.FC<TeamSectionProps> = ({ user }) => {
 
   const getRoleLabel = (role: UserRole) => {
     switch (role) {
+      case 'superadmin': return 'Superadmin';
       case 'admin': return 'Administrator';
       case 'operations': return 'Operations';
       case 'viewer': return 'Viewer';
@@ -313,6 +315,7 @@ const TeamSection: React.FC<TeamSectionProps> = ({ user }) => {
                         disabled={isUpdating === userItem.id || userItem.id === user.id}
                         className="text-xs border border-neutral-300 rounded px-2 py-1 focus:ring-1 focus:ring-archer-blue"
                       >
+                        <option value="superadmin">Superadmin</option>
                         <option value="viewer">Viewer</option>
                         <option value="operations">Operations</option>
                         <option value="admin">Admin</option>
