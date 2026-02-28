@@ -12,9 +12,8 @@ import EventDetailPage from '@/pages/Events/EventDetailPage';
 import EventForm from '@/pages/Events/EventForm';
 import CalendarPage from '@/pages/Events/CalendarPage';
 import SettingsLayout from '@/pages/Settings/SettingsLayout';
+import AppShell from '@/components/layout/AppShell';
 import Spinner from '@/components/common/Spinner';
-import FinanceOverview from '@/pages/Finance/FinanceOverview';
-import MyProfile from '@/pages/Users/MyProfile';
 
 const AUTH_TIMEOUT_MS = 8000;
 
@@ -128,9 +127,12 @@ function App() {
                 <Route path="/events/:id" element={<EventDetailPage user={user!} />} />
                 <Route path="/events/:id/edit" element={<EventForm user={user!} />} />
                 <Route path="/calendar" element={<CalendarPage user={user!} />} />
-                <Route path="/finance" element={<FinanceOverview user={user!} />} />
-                <Route path="/my-profile" element={<MyProfile user={user!} onUserUpdated={(updated) => setUser(updated)} />} />
-                <Route path="/settings/*" element={<SettingsLayout user={user!} />} />
+                <Route
+                  path="/settings/*"
+                  element={
+                    <SettingsLayoutWrapper user={user!} />
+                  }
+                />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </ProtectedRoute>
@@ -140,5 +142,13 @@ function App() {
     </Router>
   );
 }
+
+const SettingsLayoutWrapper: React.FC<{ user: User }> = ({ user }) => {
+  return (
+    <AppShell user={user} hideNavExtras>
+      <SettingsLayout user={user} />
+    </AppShell>
+  );
+};
 
 export default App;

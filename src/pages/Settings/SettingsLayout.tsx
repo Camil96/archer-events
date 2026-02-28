@@ -6,7 +6,6 @@ import {
   Users,
   Palette,
   FileText,
-  UtensilsCrossed,
   Menu,
   X,
   LogOut,
@@ -15,14 +14,12 @@ import {
 import { User, SettingsNavigationItem } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { usePermissions } from '@/hooks/usePermissions';
 
 import SettingsView from '@/components/settings/SettingsView';
 import AccountSection from './AccountSection';
 import UsersSection from './UsersSection';
 import BrandManagementSection from './BrandManagementSection';
 import AuditLogSection from './AuditLogSection';
-import CateringSection from './CateringSection';
 
 const navigationItems: SettingsNavigationItem[] = [
   {
@@ -52,13 +49,6 @@ const navigationItems: SettingsNavigationItem[] = [
     description: 'Bekijk de laatste activiteiten in de app',
     requiredRole: 'admin',
   },
-  {
-    id: 'catering',
-    label: 'Catering',
-    icon: UtensilsCrossed,
-    description: 'Beheer de centrale cateringcatalogus',
-    requiredRole: 'admin',
-  },
 ];
 
 interface SettingsLayoutProps {
@@ -66,7 +56,6 @@ interface SettingsLayoutProps {
 }
 
 const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
-  const permissions = usePermissions(user);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('account');
   const [accentColor, setAccentColor] = useState<string | null>(null);
@@ -110,17 +99,17 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
 
   const filteredNavigationItems = navigationItems.filter(item => {
     if (!item.requiredRole) return true;
-    return permissions.canManageSettings;
+    return user.role === 'admin';
   });
 
   // Route guard: redirect non-admin users away from admin-only paths
-  const adminOnlyPaths = ['users', 'brands', 'audit', 'catering'];
+  const adminOnlyPaths = ['users', 'brands', 'audit'];
   useEffect(() => {
     const pathSegment = location.pathname.split('/').filter(Boolean).pop();
-    if (pathSegment && adminOnlyPaths.includes(pathSegment) && !permissions.canManageSettings) {
+    if (pathSegment && adminOnlyPaths.includes(pathSegment) && user.role !== 'admin') {
       navigate('/settings/account', { replace: true });
     }
-  }, [location.pathname, permissions.canManageSettings, navigate]);
+  }, [location.pathname, user.role, navigate]);
 
   const activeItem = navigationItems.find(item => item.id === activeSection);
 
@@ -180,13 +169,11 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
                 <span className={cn(
                   'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
                   user.role === 'admin' ? 'bg-red-100 text-red-800' :
-                  user.role === 'superadmin' ? 'bg-purple-100 text-purple-800' :
                   user.role === 'operations' ? 'bg-blue-100 text-blue-800' :
                   'bg-gray-100 text-gray-800'
                 )}>
                   <Shield className="w-3 h-3 mr-1" />
-                  {user.role === 'superadmin' ? 'Superadmin' :
-                   user.role === 'admin' ? 'Administrator' :
+                  {user.role === 'admin' ? 'Administrator' :
                    user.role === 'operations' ? 'Operations' : 'Viewer'}
                 </span>
               </div>
@@ -289,7 +276,6 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
               <Route path="/users" element={<UsersSection user={user} />} />
               <Route path="/brands" element={<BrandManagementSection user={user} />} />
               <Route path="/audit" element={<AuditLogSection user={user} />} />
-              <Route path="/catering" element={<CateringSection user={user} />} />
             </Routes>
           </SettingsView>
         </main>

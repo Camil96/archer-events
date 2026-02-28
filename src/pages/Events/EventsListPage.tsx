@@ -6,7 +6,6 @@ import EmptyState from '@/components/common/EmptyState';
 import ErrorBanner from '@/components/common/ErrorBanner';
 import { supabase } from '@/lib/supabase';
 import { User, Event } from '@/types';
-import { usePermissions } from '@/hooks/usePermissions';
 
 interface EventsListPageProps {
   user: User;
@@ -15,7 +14,6 @@ interface EventsListPageProps {
 type StatusFilter = 'all' | 'gepland' | 'bevestigd' | 'afgerond' | 'geannuleerd';
 
 const EventsListPage: React.FC<EventsListPageProps> = ({ user }) => {
-  const permissions = usePermissions(user);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +32,7 @@ const EventsListPage: React.FC<EventsListPageProps> = ({ user }) => {
       if (statusFilter !== 'all') query = query.eq('status', statusFilter);
       const { data, error: err } = await query;
       if (err) throw err;
-      const scoped = ((data || []) as Event[]).filter((row) => permissions.canViewEventForBrand(row.brand));
-      setEvents(scoped);
+      setEvents(data || []);
     } catch (err: any) {
       setError(err.message || 'Kon events niet laden.');
     } finally {
@@ -58,14 +55,12 @@ const EventsListPage: React.FC<EventsListPageProps> = ({ user }) => {
             <p className="text-sm text-neutral-500">Beheer</p>
             <h1 className="text-2xl font-bold text-neutral-900">Events</h1>
           </div>
-          {permissions.canCreateEvent && (
-            <button
-              onClick={() => navigate('/events/new')}
-              className="px-4 py-2 rounded-lg bg-archer-blue text-white font-medium hover:bg-archer-dark"
-            >
-              + Nieuw event
-            </button>
-          )}
+          <button
+            onClick={() => navigate('/events/new')}
+            className="px-4 py-2 rounded-lg bg-archer-blue text-white font-medium hover:bg-archer-dark"
+          >
+            + Nieuw event
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -103,9 +98,8 @@ const EventsListPage: React.FC<EventsListPageProps> = ({ user }) => {
             description="Maak een eerste event aan om te starten."
             action={
               <button
-                className="mt-3 px-4 py-2 rounded-lg bg-archer-blue text-white disabled:opacity-60"
+                className="mt-3 px-4 py-2 rounded-lg bg-archer-blue text-white"
                 onClick={() => navigate('/events/new')}
-                disabled={!permissions.canCreateEvent}
               >
                 Nieuw event
               </button>

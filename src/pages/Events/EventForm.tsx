@@ -5,14 +5,12 @@ import Spinner from '@/components/common/Spinner';
 import ErrorBanner from '@/components/common/ErrorBanner';
 import { supabase } from '@/lib/supabase';
 import { User, Event } from '@/types';
-import { usePermissions } from '@/hooks/usePermissions';
 
 interface EventFormProps {
   user: User;
 }
 
 const EventForm: React.FC<EventFormProps> = ({ user }) => {
-  const permissions = usePermissions(user);
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id && id !== 'new');
@@ -68,15 +66,6 @@ const EventForm: React.FC<EventFormProps> = ({ user }) => {
         <div className="flex items-center justify-center py-16">
           <Spinner size="lg" />
         </div>
-      </AppShell>
-    );
-  }
-
-  const canAccess = isEdit ? permissions.canEditEvent : permissions.canCreateEvent;
-  if (!canAccess) {
-    return (
-      <AppShell user={user}>
-        <ErrorBanner message="Je hebt geen rechten voor deze actie." />
       </AppShell>
     );
   }
