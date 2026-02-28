@@ -33,43 +33,59 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
-        <h1 className="text-3xl font-bold text-neutral-900 mb-2">Archer Events</h1>
-        <p className="text-neutral-600 mb-6">Log in met je e-mailadres.</p>
+    <div className="relative min-h-screen bg-neutral-100 flex items-center justify-center px-4 py-10 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_15%,rgba(0,0,255,0.12),transparent_42%)]" />
+      <div className="relative w-full max-w-lg rounded-3xl border border-neutral-300 bg-white/95 shadow-[0_22px_60px_rgba(45,48,54,0.16)] backdrop-blur-sm p-7 sm:p-9">
+        <div className="mb-8 text-center">
+          <img
+            src="/archer-wordmark.png"
+            alt="Archer"
+            className="mx-auto h-12 w-auto"
+          />
+          <p className="mt-4 text-sm tracking-[0.18em] uppercase text-neutral-600">Archer Events</p>
+          <h1 className="mt-2 text-3xl font-bold text-neutral-900">Log in met je e-mailadres</h1>
+          <p className="mt-2 text-neutral-700">We sturen je een beveiligde login-link.</p>
+        </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
         {sent ? (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-            Login link verzonden. Check je mailbox.
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            Login-link verzonden. Controleer je mailbox en open de link.
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <label className="block">
-              <span className="block text-sm text-neutral-700 mb-1">E-mailadres</span>
+              <span className="block text-sm font-semibold text-neutral-800 mb-1.5">E-mailadres</span>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
                 placeholder="naam@bedrijf.com"
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-neutral-900 outline-none transition focus:ring-2 focus:ring-archer-blue/25 focus:border-archer-blue"
               />
             </label>
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-blue-600 text-white px-4 py-2 font-medium disabled:opacity-60"
+              className="w-full rounded-xl bg-archer-blue text-white px-4 py-3 font-semibold tracking-wide hover:bg-archer-dark transition disabled:opacity-60"
             >
-              {loading ? 'Verzenden...' : 'Stuur login link'}
+              {loading ? 'Verzenden...' : 'Stuur login-link'}
             </button>
           </form>
         )}
+
+        <div className="mt-7 grid grid-cols-3 gap-2 text-xs text-neutral-600">
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 py-2 text-center">Academy</div>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 py-2 text-center">Invest</div>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 py-2 text-center">Investment Fund</div>
+        </div>
       </div>
     </div>
   );

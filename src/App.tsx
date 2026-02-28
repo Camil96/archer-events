@@ -6,10 +6,6 @@ import { User } from './types';
 import SettingsLayout from './pages/Settings/SettingsLayout';
 import Login from './pages/Auth/Login';
 
-// Import existing vanilla JS components for backward compatibility
-// These would need to be converted to React components later
-// import { renderAppShell } from './appShell.js';
-
 const AUTH_TIMEOUT_MS = 8000;
 
 function mapUserProfile(profile: any, authUser: any): User {
@@ -103,10 +99,14 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-neutral-100 flex items-center justify-center px-4">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-neutral-900 mb-3">Archer Events</h1>
-          <p className="text-neutral-600">Bezig met laden...</p>
+          <img
+            src="/archer-wordmark.png"
+            alt="Archer"
+            className="mx-auto h-12 w-auto mb-4"
+          />
+          <p className="text-neutral-700 font-medium">Bezig met laden...</p>
         </div>
       </div>
     );
@@ -114,7 +114,17 @@ function App() {
 
   return (
     <Router>
-      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            border: '1px solid #d6dde6',
+            borderRadius: '12px',
+            color: '#2d3036',
+          },
+        }}
+      />
       <div className="min-h-screen bg-neutral-50">
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/settings" replace /> : <Login />} />

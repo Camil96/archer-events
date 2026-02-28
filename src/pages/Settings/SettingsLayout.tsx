@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import {
   User as UserIcon,
-  Settings,
   Users,
   Palette,
   FileText,
@@ -126,17 +125,22 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
       {/* Sidebar */}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
+          'fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 border-r border-neutral-200',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-neutral-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-archer-blue rounded-lg flex items-center justify-center">
-              <Settings className="w-4 h-4 text-white" />
+        <div className="flex items-center justify-between h-20 px-6 border-b border-neutral-200 bg-white">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center">
+              <img src="/Icon_Blue.png" alt="Archer icon" className="w-6 h-6 object-contain" />
             </div>
-            <h1 className="text-lg font-semibold text-neutral-900">Instellingen</h1>
+            <div className="min-w-0">
+              <img src="/archer-wordmark.png" alt="Archer" className="h-6 w-auto" />
+              <p className="text-[11px] tracking-[0.16em] uppercase text-neutral-500 mt-1">
+                Event Operations
+              </p>
+            </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -192,9 +196,9 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
                 key={item.id}
                 onClick={() => handleNavigation(item.id)}
                 className={cn(
-                  'w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors duration-200',
+                  'w-full flex items-center px-3 py-3 text-sm font-medium rounded-xl transition-all duration-200',
                   isActive
-                    ? 'bg-archer-blue text-white'
+                    ? 'bg-archer-blue text-white shadow-[0_12px_28px_rgba(0,0,255,0.22)]'
                     : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
                 )}
               >
@@ -252,17 +256,21 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
 
         {/* Page Header */}
         <div className="bg-white border-b border-neutral-200">
-          <div className="px-6 py-6">
-            <div className="flex items-center space-x-3">
-              {activeItem && <activeItem.icon className="w-6 h-6 text-archer-blue" />}
-              <div>
-                <h1 className="text-2xl font-bold text-neutral-900">
-                  {activeItem?.label || 'Instellingen'}
-                </h1>
-                <p className="text-sm text-neutral-600 mt-1">
-                  {activeItem?.description}
-                </p>
+          <div className="px-6 py-6 bg-[linear-gradient(120deg,rgba(0,0,255,0.04),transparent_40%)]">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                {activeItem && <activeItem.icon className="w-6 h-6 text-archer-blue" />}
+                <div>
+                  <h1 className="text-2xl font-bold text-neutral-900">
+                    {activeItem?.label || 'Instellingen'}
+                  </h1>
+                  <p className="text-sm text-neutral-600 mt-1">
+                    {activeItem?.description}
+                  </p>
+                </div>
               </div>
+              <img src="/archer-wordmark.png" alt="Archer" className="hidden md:block h-7 w-auto opacity-90" />
+              <div className="md:hidden" />
             </div>
           </div>
         </div>

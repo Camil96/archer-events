@@ -7,22 +7,26 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Archer brand colors
-        'archer-blue': '#4d73ff',
-        'archer-dark': '#2d50ef',
-        'archer-darkest': '#1032cf',
+        // Archer brandbook colors
+        'archer-blue': '#0000ff',
+        'archer-dark': '#2d3036',
+        'archer-darkest': '#000000',
+        // UI support blues
+        'archer-blue-500': '#4d73ff',
+        'archer-blue-300': '#85aeff',
+        'archer-blue-200': '#a9d0ff',
         // Neutral palette
         'neutral': {
-          50: '#f8faff',
-          100: '#f0f4ff',
-          200: '#e5ecfa',
-          300: '#d4def2',
-          400: '#b8c9e3',
-          500: '#94a8c7',
-          600: '#6b7a94',
-          700: '#4a5568',
-          800: '#2d3748',
-          900: '#1a202c',
+          50: '#f8f9fc',
+          100: '#f4f4f4',
+          200: '#e8edf3',
+          300: '#d6dde6',
+          400: '#a6b3c0',
+          500: '#7a8b9b',
+          600: '#5f6c78',
+          700: '#47505a',
+          800: '#2d3036',
+          900: '#000000',
         }
       },
       fontFamily: {

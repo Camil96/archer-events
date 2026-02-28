@@ -1,6 +1,5 @@
 // Settings View Component - Main Settings Container
 import React from 'react';
-import { cn } from '@/lib/utils';
 
 interface SettingsViewProps {
   accentColor?: string | null;
@@ -9,6 +8,8 @@ interface SettingsViewProps {
 
 const SettingsView: React.FC<SettingsViewProps> = ({ accentColor, children }) => {
   const style = accentColor ? {
+    '--brand-accent': accentColor,
+    '--brand-accent-hover': accentColor,
     '--archer-blue': accentColor,
     '--archer-dark': accentColor,
   } as React.CSSProperties : {};

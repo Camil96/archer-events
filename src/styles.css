@@ -1,22 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  /* Brandbook baseline (Academy fallback) */
-  --brand-accent: #4d73ff;
-  --brand-accent-hover: #3d66ff;
+  /* Archer brandbook 2024 */
+  --brand-accent: #0000ff;       /* Electric Blue */
+  --brand-accent-hover: #0000d8;
   --brand-accent-strong: #0000ff;
   --brand-accent-soft: #eef2ff;
   --brand-accent-tint: #a9d0ff;
-  --brand-accent-rgb: 77, 115, 255;
-  --brand-text-heading: #0f1f3a;
-  --brand-text-body: #1a1a1a;
-  --brand-text-muted: #5d6c7b;
-  --brand-border: #d9e2f0;
-  --brand-border-soft: #edf2fa;
-  --brand-border-strong: #c7d7ff;
+  --brand-accent-rgb: 0, 0, 255;
+  --brand-text-heading: #000000; /* Black */
+  --brand-text-body: #2d3036;    /* Onyx */
+  --brand-text-muted: #5f6c78;
+  --brand-border: #d6dde6;
+  --brand-border-soft: #e8edf3;
+  --brand-border-strong: #b9c6d4;
   --brand-surface: #ffffff;
-  --brand-surface-alt: #f8fbff;
-  --brand-shell-start: #f7f9ff;
-  --brand-shell-end: #edf3ff;
-  --focus-ring: rgba(var(--brand-accent-rgb), 0.22);
+  --brand-surface-alt: #f8f9fc;
+  --brand-shell-start: #f6f7fa;
+  --brand-shell-end: #eef1f6;
+  --focus-ring: rgba(var(--brand-accent-rgb), 0.2);
 
   --cp-accent: var(--brand-accent);
   --cp-accent-hover: var(--brand-accent-hover);
@@ -31,11 +35,11 @@
   --primary: var(--brand-accent);
   --primary-hover: var(--brand-accent-hover);
   --primary-vlight: var(--brand-accent-soft);
-  --secondary: #22c55e;
+  --secondary: #4d73ff;
   --danger: #ef4444;
   --warning: #f59e0b;
 
-  --bg-main: #f4f4f4;
+  --bg-main: #f4f4f4;            /* Off White */
   --bg-card: var(--brand-surface);
   --text-heading: var(--brand-text-heading);
   --text-body: var(--brand-text-body);
@@ -54,12 +58,12 @@
 
   /* Legacy token aliases used by existing modules */
   --white: #ffffff;
-  --black: #1a1a1a;
+  --black: #000000;
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
-  --gray-400: #9ca3af;
-  --gray-600: #4b5563;
-  --gray-800: #1f2937;
+  --gray-400: #a6b3c0;
+  --gray-600: #637384;
+  --gray-800: #2d3036;
   --blue: var(--brand-accent);
   --font: 'Inter', system-ui, -apple-system, sans-serif;
   --radius: 10px;
@@ -153,6 +157,11 @@ body {
   -webkit-font-smoothing: antialiased;
   padding-bottom: env(safe-area-inset-bottom);
   overflow-x: hidden;
+}
+
+::selection {
+  color: #ffffff;
+  background: var(--brand-accent);
 }
 
 #root {
