@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, CalendarDays, Settings, LogOut, Search, ListChecks } from 'lucide-react';
+import { Home, CalendarDays, Settings, LogOut, Search, ListChecks, CircleDollarSign, UserCircle2 } from 'lucide-react';
 import { User } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface AppShellProps {
   user: User;
@@ -15,13 +16,16 @@ interface AppShellProps {
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: Home },
   { to: '/events', label: 'Events', icon: CalendarDays },
+  { to: '/finance', label: 'Financiën', icon: CircleDollarSign, permission: 'canViewFinance' },
   { to: '/calendar', label: 'Kalender', icon: ListChecks },
   { to: '/settings/account', label: 'Instellingen', icon: Settings },
 ];
 
 const AppShell: React.FC<AppShellProps> = ({ user, children, onSearch, defaultSearch = '', hideNavExtras }) => {
+  const permissions = usePermissions(user);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState(defaultSearch);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -56,7 +60,10 @@ const AppShell: React.FC<AppShellProps> = ({ user, children, onSearch, defaultSe
         </div>
 
         <nav className="p-4 space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => {
+            if (item.permission === 'canViewFinance') return permissions.canViewFinance;
+            return true;
+          }).map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname.startsWith(item.to);
             return (
@@ -115,18 +122,48 @@ const AppShell: React.FC<AppShellProps> = ({ user, children, onSearch, defaultSe
               </div>
             )}
 
-            <div className="flex items-center space-x-3 pl-3">
-              <div className="w-9 h-9 rounded-full bg-neutral-200 flex items-center justify-center">
-                {user.avatar_url ? (
-                  <img src={user.avatar_url} alt={user.full_name || user.email} className="w-full h-full rounded-full object-cover" />
-                ) : (
-                  <span className="text-xs font-semibold text-neutral-700">{(user.full_name || user.email || 'U')[0]}</span>
-                )}
-              </div>
-              <div className="hidden sm:block">
-                <p className="text-sm font-medium text-neutral-900">{user.full_name || 'Gebruiker'}</p>
-                <p className="text-xs text-neutral-500 capitalize">{user.role}</p>
-              </div>
+            <div className="relative flex items-center space-x-3 pl-3">
+              <button
+                onClick={() => setProfileMenuOpen((prev) => !prev)}
+                className="flex items-center space-x-2 p-1 rounded-lg hover:bg-neutral-100"
+              >
+                <div className="w-9 h-9 rounded-full bg-neutral-200 flex items-center justify-center">
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.full_name || user.email} className="w-full h-full rounded-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-semibold text-neutral-700">{(user.full_name || user.email || 'U')[0]}</span>
+                  )}
+                </div>
+                <div className="hidden sm:block text-left">
+                  <p className="text-sm font-medium text-neutral-900">{user.full_name || 'Gebruiker'}</p>
+                  <p className="text-xs text-neutral-500 capitalize">{user.role}</p>
+                </div>
+              </button>
+
+              {profileMenuOpen && (
+                <div className="absolute right-0 top-12 w-52 bg-white border border-neutral-200 rounded-lg shadow-lg p-1 z-50">
+                  <button
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      navigate('/my-profile');
+                    }}
+                    className="w-full px-3 py-2 rounded-md text-sm text-left hover:bg-neutral-100 inline-flex items-center"
+                  >
+                    <UserCircle2 className="w-4 h-4 mr-2" />
+                    Mijn profiel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full px-3 py-2 rounded-md text-sm text-left hover:bg-neutral-100 inline-flex items-center"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Uitloggen
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
