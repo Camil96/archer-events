@@ -82,15 +82,33 @@ const Login: React.FC = () => {
         )}
 
         <div className="mt-7 grid grid-cols-3 gap-2">
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2">
+          <a
+            href="https://archer.academy/"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2"
+            aria-label="Archer Academy"
+          >
             <img src="/archer-wordmark.png" alt="Archer Academy" className="max-h-5 w-auto object-contain" />
-          </div>
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2">
+          </a>
+          <a
+            href="https://archerinvest.be/"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2"
+            aria-label="Archer Invest"
+          >
             <img src="/brands/invest-logo.svg" alt="Archer Invest" className="max-h-4 w-auto object-contain" />
-          </div>
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2">
+          </a>
+          <a
+            href="https://archerinvestment.fund/"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-neutral-200 bg-neutral-50 h-12 flex items-center justify-center px-2"
+            aria-label="Archer Investment Fund"
+          >
             <img src="/brands/fund-logo.png" alt="Archer Investment Fund" className="max-h-6 w-auto object-contain" />
-          </div>
+          </a>
         </div>
       </div>
     </div>

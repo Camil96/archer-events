@@ -277,6 +277,19 @@ textarea {
   font-weight: 600;
 }
 
+.nav-brand-logo-item {
+  justify-content: center;
+  min-height: 52px;
+}
+
+.nav-brand-logo {
+  width: 100%;
+  max-width: 154px;
+  max-height: 30px;
+  object-fit: contain;
+  filter: saturate(1.05);
+}
+
 .nav-icon {
   margin-right: 12px;
   font-size: 1.1rem;
@@ -321,16 +334,22 @@ textarea {
 .header-brand-chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  justify-content: center;
+  min-width: 140px;
+  min-height: 34px;
+  padding: 4px 12px;
   border-radius: 999px;
   background: var(--primary-vlight);
   color: var(--primary);
   border: 1px solid rgba(var(--brand-accent-rgb), 0.22);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   white-space: nowrap;
+}
+
+.header-brand-chip-logo {
+  max-height: 18px;
+  max-width: 110px;
+  width: auto;
+  object-fit: contain;
 }
 
 .header-actions-row {

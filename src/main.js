@@ -156,15 +156,15 @@ function renderLogin(container) {
             grid-template-columns:repeat(3, minmax(0, 1fr));
             gap:12px;
           ">
-            <div style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;">
-              <img src="${academyLogo}" alt="Archer Academy" style="max-width:100%;max-height:30px;object-fit:contain;" />
-            </div>
-            <div style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;">
-              <img src="${investLogo}" alt="Archer Invest" style="max-width:100%;max-height:22px;object-fit:contain;" />
-            </div>
-            <div style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;">
-              <img src="${fundLogo}" alt="Archer Investment Fund" style="max-width:100%;max-height:36px;object-fit:contain;" />
-            </div>
+            <a href="https://archer.academy/" target="_blank" rel="noopener noreferrer" aria-label="Archer Academy" style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;text-decoration:none;">
+              <img src="${academyLogo}" alt="Archer Academy" style="max-width:100%;max-height:26px;object-fit:contain;" />
+            </a>
+            <a href="https://archerinvest.be/" target="_blank" rel="noopener noreferrer" aria-label="Archer Invest" style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;text-decoration:none;">
+              <img src="${investLogo}" alt="Archer Invest" style="max-width:100%;max-height:20px;object-fit:contain;" />
+            </a>
+            <a href="https://archerinvestment.fund/" target="_blank" rel="noopener noreferrer" aria-label="Archer Investment Fund" style="height:58px;display:flex;align-items:center;justify-content:center;border:1px solid #d6dde6;border-radius:14px;background:#f8f9fc;padding:8px;text-decoration:none;">
+              <img src="${fundLogo}" alt="Archer Investment Fund" style="max-width:100%;max-height:28px;object-fit:contain;" />
+            </a>
           </div>
         </div>
       </div>

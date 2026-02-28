@@ -80,6 +80,10 @@ async function render() {
   const shellBrandDisplay = getGlobalBrandFilterLabel();
   const shellWordmark = shellBrandVisual.logo_url?.trim() || getBrandLogoWordmark(shellBrandKey);
   const shellIcon = getBrandLogoIcon(shellBrandKey);
+  const shellBrandLogo = getBrandLogoWordmark(shellBrandKey);
+  const academyNavLogo = getBrandLogoWordmark('archer_academy');
+  const investNavLogo = getBrandLogoWordmark('archer_invest');
+  const fundNavLogo = getBrandLogoWordmark('archer_fund');
   const academyNavLabel = getBrandFilterOptionLabel('archer_academy');
   const investNavLabel = getBrandFilterOptionLabel('archer_invest');
   const fundNavLabel = getBrandFilterOptionLabel('archer_fund');
@@ -104,9 +108,15 @@ async function render() {
 
         <div class="nav-section">
           <div class="nav-label">Contexten</div>
-          <a class="nav-item nav-brand-item ${globalBrandFilter === 'Academy' ? 'active' : ''}" data-brand="Academy"><span class="nav-icon">🎓</span>${esc(academyNavLabel)}</a>
-          <a class="nav-item nav-brand-item ${globalBrandFilter === 'Invest' ? 'active' : ''}" data-brand="Invest"><span class="nav-icon">📈</span>${esc(investNavLabel)}</a>
-          <a class="nav-item nav-brand-item ${globalBrandFilter === 'Fund' ? 'active' : ''}" data-brand="Fund"><span class="nav-icon">💼</span>${esc(fundNavLabel)}</a>
+          <a class="nav-item nav-brand-item nav-brand-logo-item ${globalBrandFilter === 'Academy' ? 'active' : ''}" data-brand="Academy" aria-label="${esc(academyNavLabel)}" title="${esc(academyNavLabel)}">
+            <img src="${esc(academyNavLogo)}" alt="${esc(academyNavLabel)}" class="nav-brand-logo" onerror="this.style.display='none'">
+          </a>
+          <a class="nav-item nav-brand-item nav-brand-logo-item ${globalBrandFilter === 'Invest' ? 'active' : ''}" data-brand="Invest" aria-label="${esc(investNavLabel)}" title="${esc(investNavLabel)}">
+            <img src="${esc(investNavLogo)}" alt="${esc(investNavLabel)}" class="nav-brand-logo" onerror="this.style.display='none'">
+          </a>
+          <a class="nav-item nav-brand-item nav-brand-logo-item ${globalBrandFilter === 'Fund' ? 'active' : ''}" data-brand="Fund" aria-label="${esc(fundNavLabel)}" title="${esc(fundNavLabel)}">
+            <img src="${esc(fundNavLogo)}" alt="${esc(fundNavLabel)}" class="nav-brand-logo" onerror="this.style.display='none'">
+          </a>
         </div>
 
         <div class="nav-section">
@@ -127,7 +137,9 @@ async function render() {
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
               <img src="${esc(shellIcon)}" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
               <h1>${esc(pageTitle)}</h1>
-              <span class="header-brand-chip">${esc(shellBrandDisplay)}</span>
+              <span class="header-brand-chip" title="${esc(shellBrandDisplay)}" aria-label="${esc(shellBrandDisplay)}">
+                <img src="${esc(shellBrandLogo)}" alt="${esc(shellBrandDisplay)}" class="header-brand-chip-logo" onerror="this.style.display='none'">
+              </span>
             </div>
             <div class="header-actions-row">
               <label class="header-brand-filter">
@@ -1098,7 +1110,14 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   if (headerIcon) headerIcon.src = theme.logoIcon;
 
   const headerChip = rootEl.querySelector('.header-brand-chip');
-  if (headerChip) headerChip.textContent = getGlobalBrandFilterLabel();
+  if (headerChip) {
+    const brandLabel = getGlobalBrandFilterLabel();
+    headerChip.title = brandLabel;
+    headerChip.setAttribute('aria-label', brandLabel);
+  }
+
+  const headerChipLogo = rootEl.querySelector('.header-brand-chip-logo');
+  if (headerChipLogo) headerChipLogo.src = visualSettings.logo_url?.trim() || theme.logoWordmark;
 
   const headerBrandFilter = rootEl.querySelector('#global-brand-filter');
   if (headerBrandFilter) headerBrandFilter.value = globalBrandFilter || '';
