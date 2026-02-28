@@ -13,13 +13,14 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ user }) => {
   const [fullName, setFullName] = useState(user.full_name || '');
   const [email] = useState(user.email);
   const [avatarUrl, setAvatarUrl] = useState(user.avatar_url || '');
-  const [preferences, setPreferences] = useState<UserPreferences>(user.preferences);
+  const defaultPrefs: UserPreferences = { language: 'nl', notifications: true, theme: 'light' };
+  const [preferences, setPreferences] = useState<UserPreferences>(user.preferences || defaultPrefs);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setFullName(user.full_name || '');
     setAvatarUrl(user.avatar_url || '');
-    setPreferences(user.preferences);
+    setPreferences(user.preferences || defaultPrefs);
   }, [user]);
 
   const handleSave = async () => {

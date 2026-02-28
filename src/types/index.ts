@@ -1,7 +1,13 @@
+export interface UserPreferences {
+  language?: 'nl' | 'en';
+  notifications?: boolean;
+  theme?: 'light' | 'dark';
+}
+
 export interface User {
   id: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   email: string;
   full_name: string | null;
   avatar_url: string | null;
@@ -9,40 +15,33 @@ export interface User {
   brand_access: string[];
   is_active: boolean;
   last_sign_in_at: string | null;
-  preferences: UserPreferences;
-}
-
-export interface UserPreferences {
-  language: 'nl' | 'en';
-  notifications: boolean;
-  theme: 'light' | 'dark';
+  preferences?: UserPreferences | null;
+  language_pref?: 'nl' | 'en';
 }
 
 export interface BrandSettings {
   id: string;
-  created_at: string;
-  updated_at: string;
-  brand: 'academy' | 'invest' | 'fund';
-  brand_name: string | null;
-  accent_color: string | null;
+  created_at?: string;
+  updated_at?: string;
+  brand_key: 'academy' | 'invest' | 'fund';
+  label: string | null;
+  primary_color: string | null;
   logo_url: string | null;
-  logo_wordmark_url: string | null;
-  email_contact: string | null;
-  is_active: boolean;
+  is_active?: boolean;
+  email_contact?: string | null;
 }
 
 export interface AuditLog {
   id: string;
   created_at: string;
   user_id: string | null;
-  action: 'create' | 'update' | 'delete' | 'login' | 'logout';
-  resource_type: string;
-  resource_id: string | null;
-  old_values: Record<string, any> | null;
-  new_values: Record<string, any> | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  metadata: Record<string, any>;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  payload: Record<string, any> | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  metadata?: Record<string, any>;
   user?: User; // Joined user data
 }
 
@@ -59,8 +58,8 @@ export interface UserSession {
 
 export interface Event {
   id: string;
-  created_at: string;
-  deleted_at: string | null;
+  created_at?: string;
+  deleted_at?: string | null;
   title: string;
   description: string | null;
   location: string | null;
@@ -75,6 +74,8 @@ export interface Event {
   catering: string | null;
   budget: number | null;
   notes_internal: string | null;
+  status?: 'gepland' | 'bevestigd' | 'afgerond' | 'geannuleerd';
+  ics_uid?: string | null;
 }
 
 export type Brand = 'academy' | 'invest' | 'fund';

@@ -29,7 +29,7 @@ const TeamSection: React.FC<TeamSectionProps> = ({ user }) => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setUsers(data || []);
+      setUsers((data || []).map((u) => ({ ...u, brand_access: u.brand_access || [] })));
     } catch (error) {
       console.error('Error loading users:', error);
     } finally {
@@ -110,7 +110,7 @@ const TeamSection: React.FC<TeamSectionProps> = ({ user }) => {
     const matchesSearch = u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          u.email?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    const matchesBrand = brandFilter === 'all' || u.brand_access?.includes(brandFilter);
+    const matchesBrand = brandFilter === 'all' || (u.brand_access || []).includes(brandFilter);
     
     return matchesSearch && matchesRole && matchesBrand;
   });

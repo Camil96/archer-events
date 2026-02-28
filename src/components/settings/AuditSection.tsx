@@ -29,10 +29,10 @@ const AuditSection: React.FC<AuditSectionProps> = ({ user }) => {
     setLoading(true);
     try {
       let query = supabase
-        .from('audit_log')
+        .from('audit_logs')
         .select(`
           *,
-          user:profiles(full_name, email)
+          user:profiles(full_name, email, avatar_url)
         `)
         .order('created_at', { ascending: false });
 
@@ -42,7 +42,7 @@ const AuditSection: React.FC<AuditSectionProps> = ({ user }) => {
       }
       
       if (resourceFilter !== 'all') {
-        query = query.eq('resource_type', resourceFilter);
+        query = query.eq('target_type', resourceFilter);
       }
 
       // Apply date filter
@@ -84,7 +84,7 @@ const AuditSection: React.FC<AuditSectionProps> = ({ user }) => {
       log.user?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.resource_type?.toLowerCase().includes(searchTerm.toLowerCase());
+      log.target_type?.toLowerCase().includes(searchTerm.toLowerCase());
     
     return matchesSearch;
   });
@@ -186,7 +186,7 @@ const AuditSection: React.FC<AuditSectionProps> = ({ user }) => {
               <option value="all">Alle resources</option>
               <option value="event">Events</option>
               <option value="user">Gebruikers</option>
-              <option value="brand_setting">Brand Settings</option>
+              <option value="brand_settings">Brand Settings</option>
               <option value="profile">Profielen</option>
             </select>
 
@@ -306,21 +306,21 @@ const AuditSection: React.FC<AuditSectionProps> = ({ user }) => {
                   </td>
 
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-900">
-                    {log.resource_type}
+                    {log.target_type}
                   </td>
 
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600">
-                    {log.resource_id && (
+                    {log.target_id && (
                       <div className="font-mono text-xs bg-neutral-100 px-2 py-1 rounded">
-                        ID: {log.resource_id.slice(0, 8)}...
+                        ID: {String(log.target_id).slice(0, 8)}...
                       </div>
                     )}
-                    {log.new_values && (
+                    {log.payload && (
                       <div className="mt-1">
-                        {Object.keys(log.new_values).slice(0, 2).map(key => (
+                        {Object.keys(log.payload).slice(0, 2).map(key => (
                           <div key={key} className="text-xs">
-                            <strong>{key}:</strong> {String(log.new_values![key]).slice(0, 20)}
-                            {String(log.new_values![key]).length > 20 && '...'}
+                            <strong>{key}:</strong> {String((log.payload as any)[key]).slice(0, 20)}
+                            {String((log.payload as any)[key]).length > 20 && '...'}
                           </div>
                         ))}
                       </div>

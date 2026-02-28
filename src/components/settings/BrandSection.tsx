@@ -18,7 +18,7 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
   const defaultBrandColors = {
     academy: '#4d73ff',
     invest: '#2d50ef',
-    fund: '#1032cf'
+    fund: '#1032cf',
   };
 
   useEffect(() => {
@@ -29,8 +29,8 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
     try {
       const { data, error } = await supabase
         .from('brand_settings')
-        .select('*')
-        .order('brand');
+        .select('brand_key,label,primary_color,logo_url,updated_at,id,is_active,email_contact')
+        .order('brand_key');
 
       if (error) throw error;
       setBrandSettings(data || []);
@@ -47,12 +47,12 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
       const { error } = await supabase
         .from('brand_settings')
         .update({ [field]: value, updated_at: new Date().toISOString() })
-        .eq('brand', brand);
+        .eq('brand_key', brand);
 
       if (error) throw error;
 
       setBrandSettings(prev => prev.map(setting => 
-        setting.brand === brand ? { ...setting, [field]: value } : setting
+        setting.brand_key === brand ? { ...setting, [field]: value } : setting
       ));
       
       toast.success(`Brand ${brand} bijgewerkt!`);
@@ -68,14 +68,15 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
     // For now, just create a preview URL
     // In a real implementation, you'd upload to Supabase Storage
     const previewUrl = URL.createObjectURL(file);
-    await updateBrandSetting(brand, 'logo_url', previewUrl);
+    await updateBrandSetting(brand, 'logo_url', previewUrl as any);
   };
 
   const resetToDefault = async (brand: Brand) => {
-    await updateBrandSetting(brand, 'accent_color', defaultBrandColors[brand]);
+    await updateBrandSetting(brand, 'primary_color', defaultBrandColors[brand] as any);
   };
 
-  const getBrandDisplayName = (brand: Brand) => {
+  const getBrandDisplayName = (brand: Brand, label?: string | null) => {
+    if (label) return label;
     switch (brand) {
       case 'academy': return 'Archer Academy';
       case 'invest': return 'Archer Invest';
@@ -116,8 +117,8 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
       {/* Brand Configuration Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {(['academy', 'invest', 'fund'] as Brand[]).map((brand) => {
-          const settings = brandSettings.find(s => s.brand === brand);
-          const currentColor = settings?.accent_color || defaultBrandColors[brand];
+          const settings = brandSettings.find(s => s.brand_key === brand);
+          const currentColor = settings?.primary_color || defaultBrandColors[brand];
           
           return (
             <div key={brand} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
@@ -128,7 +129,7 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
               >
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">
-                    {getBrandDisplayName(brand)}
+                    {getBrandDisplayName(brand, settings?.label)}
                   </h3>
                   <div className="flex items-center space-x-2">
                     <button
@@ -167,8 +168,8 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
                   </label>
                   <input
                     type="text"
-                    value={settings?.brand_name || ''}
-                    onChange={(e) => updateBrandSetting(brand, 'brand_name', e.target.value)}
+                    value={settings?.label || ''}
+                    onChange={(e) => updateBrandSetting(brand, 'label' as keyof BrandSettings, e.target.value)}
                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-archer-blue focus:border-archer-blue"
                     placeholder={getBrandDisplayName(brand)}
                   />
@@ -184,13 +185,13 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
                       <input
                         type="color"
                         value={currentColor}
-                        onChange={(e) => updateBrandSetting(brand, 'accent_color', e.target.value)}
+                        onChange={(e) => updateBrandSetting(brand, 'primary_color' as keyof BrandSettings, e.target.value)}
                         className="h-10 w-20 border border-neutral-300 rounded cursor-pointer"
                       />
                       <input
                         type="text"
                         value={currentColor}
-                        onChange={(e) => updateBrandSetting(brand, 'accent_color', e.target.value)}
+                        onChange={(e) => updateBrandSetting(brand, 'primary_color' as keyof BrandSettings, e.target.value)}
                         className="flex-1 px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-archer-blue focus:border-archer-blue font-mono text-sm"
                         placeholder="#4d73ff"
                       />
@@ -300,8 +301,8 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {(['academy', 'invest', 'fund'] as Brand[]).map((brand) => {
-            const settings = brandSettings.find(s => s.brand === brand);
-            const currentColor = settings?.accent_color || defaultBrandColors[brand];
+            const settings = brandSettings.find(s => s.brand_key === brand);
+            const currentColor = settings?.primary_color || defaultBrandColors[brand];
             
             return (
               <div key={brand} className="text-center">
@@ -309,7 +310,7 @@ const BrandSection: React.FC<BrandSectionProps> = ({ user }) => {
                   className="rounded-lg p-4 text-white font-semibold mb-2"
                   style={{ backgroundColor: currentColor }}
                 >
-                  {getBrandDisplayName(brand)}
+                  {getBrandDisplayName(brand, settings?.label)}
                 </div>
                 <div className="space-y-2 text-sm">
                   <div>Kleur: {currentColor}</div>
