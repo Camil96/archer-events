@@ -1,21 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import {
-  User as UserIcon,
+  User,
   Settings,
   Users,
   Palette,
   FileText,
   Menu,
   X,
+  ChevronRight,
   LogOut,
   Shield,
+  Bell,
+  Globe,
 } from 'lucide-react';
-import { User, SettingsNavigationItem } from '@/types';
+import { User, UserRole, SettingsNavigationItem } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
-import SettingsView from '@/components/settings/SettingsView';
+// Import section components
 import AccountSection from './AccountSection';
 import UsersSection from './UsersSection';
 import BrandManagementSection from './BrandManagementSection';
@@ -25,7 +28,7 @@ const navigationItems: SettingsNavigationItem[] = [
   {
     id: 'account',
     label: 'Account & Profiel',
-    icon: UserIcon,
+    icon: User,
     description: 'Beheer je persoonlijke gegevens en voorkeuren',
   },
   {
@@ -47,7 +50,7 @@ const navigationItems: SettingsNavigationItem[] = [
     label: 'Audit Log',
     icon: FileText,
     description: 'Bekijk de laatste activiteiten in de app',
-    requiredRole: 'admin',
+    requiredRole: 'operations',
   },
 ];
 
@@ -58,11 +61,11 @@ interface SettingsLayoutProps {
 const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('account');
-  const [accentColor, setAccentColor] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
+<<<<<<< HEAD
     const loadAccent = async () => {
       try {
         const { data } = await supabase
@@ -80,6 +83,8 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
   }, []);
 
   useEffect(() => {
+=======
+>>>>>>> parent of 9cc48ba (cursor)
     const path = location.pathname.split('/').pop();
     if (path && navigationItems.find(item => item.id === path)) {
       setActiveSection(path);
@@ -99,17 +104,9 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
 
   const filteredNavigationItems = navigationItems.filter(item => {
     if (!item.requiredRole) return true;
-    return user.role === 'admin';
+    return user.role === 'admin' || 
+           (item.requiredRole === 'operations' && (user.role === 'operations' || user.role === 'admin'));
   });
-
-  // Route guard: redirect non-admin users away from admin-only paths
-  const adminOnlyPaths = ['users', 'brands', 'audit'];
-  useEffect(() => {
-    const pathSegment = location.pathname.split('/').filter(Boolean).pop();
-    if (pathSegment && adminOnlyPaths.includes(pathSegment) && user.role !== 'admin') {
-      navigate('/settings/account', { replace: true });
-    }
-  }, [location.pathname, user.role, navigate]);
 
   const activeItem = navigationItems.find(item => item.id === activeSection);
 
@@ -157,7 +154,7 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
                   className="w-10 h-10 rounded-full object-cover"
                 />
               ) : (
-                <UserIcon className="w-5 h-5 text-neutral-600" />
+                <User className="w-5 h-5 text-neutral-600" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -269,15 +266,13 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
 
         {/* Page Content */}
         <main className="p-6">
-          <SettingsView accentColor={accentColor}>
-            <Routes>
-              <Route path="/" element={<AccountSection user={user} />} />
-              <Route path="/account" element={<AccountSection user={user} />} />
-              <Route path="/users" element={<UsersSection user={user} />} />
-              <Route path="/brands" element={<BrandManagementSection user={user} />} />
-              <Route path="/audit" element={<AuditLogSection user={user} />} />
-            </Routes>
-          </SettingsView>
+          <Routes>
+            <Route path="/" element={<AccountSection user={user} />} />
+            <Route path="/account" element={<AccountSection user={user} />} />
+            <Route path="/users" element={<UsersSection user={user} />} />
+            <Route path="/brands" element={<BrandManagementSection user={user} />} />
+            <Route path="/audit" element={<AuditLogSection user={user} />} />
+          </Routes>
         </main>
       </div>
     </div>
