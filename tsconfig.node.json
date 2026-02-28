@@ -1,1 +1,1 @@
-{"compilerOptions": {"composite": true, "skipLibCheck": true, "module": "ESNext", "moduleResolution": "node", "allowSyntheticDefaultImports": true}, "include": ["vite.config.cjs"]}
+{"compilerOptions": {"composite": true, "skipLibCheck": true, "module": "ESNext", "moduleResolution": "node", "allowSyntheticDefaultImports": true}, "include": ["vite.config.js"]}
