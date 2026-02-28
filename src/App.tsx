@@ -1,31 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { supabase } from '@/lib/supabase';
-import { User } from '@/types';
-import { mapProfile } from '@/lib/profile';
-import ProtectedRoute from '@/components/layout/ProtectedRoute';
-import Login from '@/pages/Auth/Login';
-import DashboardPage from '@/pages/Dashboard/DashboardPage';
-import EventsListPage from '@/pages/Events/EventsListPage';
-import EventDetailPage from '@/pages/Events/EventDetailPage';
-import EventForm from '@/pages/Events/EventForm';
-import CalendarPage from '@/pages/Events/CalendarPage';
-import SettingsLayout from '@/pages/Settings/SettingsLayout';
-import AppShell from '@/components/layout/AppShell';
-import Spinner from '@/components/common/Spinner';
+import { supabase } from './lib/supabase';
+import { User } from './types';
+import SettingsLayout from './pages/Settings/SettingsLayout';
+
+// Import existing vanilla JS components for backward compatibility
+// These would need to be converted to React components later
+// import { renderAppShell } from './appShell.js';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Get initial session
     const getSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
-          if (data) setUser(mapProfile(data));
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          setUser(profile);
         }
       } catch (error) {
         console.error('Error getting session:', error);
@@ -36,22 +37,45 @@ function App() {
 
     getSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
-        if (data) setUser(mapProfile(data));
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-      }
-    });
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
 
-    return () => authListener?.subscription.unsubscribe();
+            setUser(profile);
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      }
+    );
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <Spinner size="lg" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-archer-blue"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-neutral-900 mb-4">Archer Events</h1>
+          <p className="text-neutral-600 mb-6">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -59,42 +83,16 @@ function App() {
   return (
     <Router>
       <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
-      <Routes>
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
-
-        <Route
-          path="/*"
-          element={
-            <ProtectedRoute user={user}>
-              <Routes>
-                <Route path="/dashboard" element={<DashboardPage user={user!} />} />
-                <Route path="/events" element={<EventsListPage user={user!} />} />
-                <Route path="/events/new" element={<EventForm user={user!} />} />
-                <Route path="/events/:id" element={<EventDetailPage user={user!} />} />
-                <Route path="/events/:id/edit" element={<EventForm user={user!} />} />
-                <Route path="/calendar" element={<CalendarPage user={user!} />} />
-                <Route
-                  path="/settings/*"
-                  element={
-                    <SettingsLayoutWrapper user={user!} />
-                  }
-                />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <div className="min-h-screen bg-neutral-50">
+        <Routes>
+          <Route path="/" element={<Navigate to="/settings" replace />} />
+          <Route path="/settings/*" element={<SettingsLayout user={user} />} />
+          {/* Add other routes as needed */}
+          <Route path="*" element={<Navigate to="/settings" replace />} />
+        </Routes>
+      </div>
     </Router>
   );
 }
-
-const SettingsLayoutWrapper: React.FC<{ user: User }> = ({ user }) => {
-  return (
-    <AppShell user={user} hideNavExtras>
-      <SettingsLayout user={user} />
-    </AppShell>
-  );
-};
 
 export default App;

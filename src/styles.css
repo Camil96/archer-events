@@ -1,8 +1,3 @@
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
   /* Brandbook baseline (Academy fallback) */
   --brand-accent: #4d73ff;

@@ -67,11 +67,11 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({ user }) => {
       try {
         const { data } = await supabase
           .from('brand_settings')
-          .select('primary_color')
-          .eq('brand_key', 'academy')
+          .select('accent_color')
+          .eq('brand', 'academy')
           .limit(1)
           .maybeSingle();
-        if (data?.primary_color) setAccentColor(data.primary_color);
+        if (data?.accent_color) setAccentColor(data.accent_color);
       } catch {
         // Fallback to default in SettingsView
       }
