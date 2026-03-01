@@ -9,7 +9,7 @@ import {
   getBrandLogoWordmark,
   normalizeHexColor,
 } from "../config.js";
-import { importEventCatalog2026, store } from "../store.js";
+import { store } from "../store.js";
 import { esc, showToast } from "../utils.js";
 
 const BRANDS = [
@@ -49,7 +49,7 @@ const SECTION_DEFS = [
   { id: "auditlog", icon: "◱", label: "Audit log", description: "Traceer kritieke wijzigingen." },
 ];
 
-const FACILITY_OPTIONS = ["WiFi", "Catering", "Parking", "AV-installatie", "Livestream", "Kleedkamers"];
+const FACILITY_OPTIONS = ["WiFi", "Catering", "Parking", "AV-installatie"];
 
 const NOTIFICATION_TRIGGERS = [
   { key: "invite", label: "Uitnodiging deelnemer" },
@@ -70,12 +70,6 @@ const DEFAULT_EVENT_TITLE_PRESETS = [
 
 const DEFAULT_PHYSICAL_LOCATION_PRESETS = ["Aula Archer", "Seneca", "Kantoor Archer"].join(", ");
 
-const DEFAULT_ONLINE_LOCATION_PRESETS = [
-  "Zoom meeting|Online - Zoom|https://zoom.us/j/",
-  "Microsoft Teams|Online - Teams|https://teams.microsoft.com/l/meetup-join/",
-  "Google Meet|Online - Google Meet|https://meet.google.com/",
-].join("\n");
-
 const EXPORT_FIELDS = [
   "title",
   "location",
@@ -90,7 +84,7 @@ const EXPORT_FIELDS = [
 ];
 
 const BRAND_IDS = BRANDS.map((b) => b.id);
-const BRAND_VISUAL_KEYS = ["accent_color", "brand_name", "logo_url"];
+const BRAND_VISUAL_KEYS = ["accent_color", "brand_name"];
 
 const state = {
   root: null,
@@ -308,7 +302,6 @@ async function renderOrganisatieSection(container) {
         const contactEmail = getSetting(settingsRows, brand.id, "contact_email", brand.fallbackEmail);
         const accentColor = getSetting(settingsRows, brand.id, "accent_color", brand.fallbackColor);
         const defaultLocationId = getSetting(settingsRows, brand.id, "default_location_id", "");
-        const logoUrl = getSetting(settingsRows, brand.id, "logo_url", "");
 
         return `
           <article class="cp-card cp-brand-card" data-brand-id="${brand.id}">
@@ -357,10 +350,6 @@ async function renderOrganisatieSection(container) {
                 </select>
               </label>
 
-              <label class="cp-field cp-col-span-2">
-                <span>Logo URL</span>
-                <input type="url" data-field="logo_url" value="${esc(logoUrl)}" placeholder="https://..." />
-              </label>
             </div>
           </article>
         `;
@@ -390,32 +379,9 @@ async function renderOrganisatieSection(container) {
             )}</textarea>
           </label>
 
-          <label class="cp-field cp-col-span-2">
-            <span>Online locatiepresets (1 per lijn: label|locatie|url)</span>
-            <textarea id="cp-online-location-presets" rows="4" placeholder="Zoom meeting|Online - Zoom|https://zoom.us/j/">${esc(
-              bookingOnlinePresets
-            )}</textarea>
-          </label>
         </div>
       </article>
 
-      <article class="cp-card">
-        <header class="cp-card-head">
-          <div>
-            <h3>Eventkalender 2026 import</h3>
-            <p>
-              Laad de aangeleverde events uit de planning in zonder duplicaten. Brandmapping:
-              <strong> Forex workshop = Academy + Invest</strong>,
-              <strong> Investor Introduction = Archer Investment Fund</strong>,
-              <strong> Mastermind/Masterclass = Invest</strong>.
-            </p>
-          </div>
-          <button class="cp-btn cp-btn-primary" id="cp-import-event-catalog" type="button">Importeer events</button>
-        </header>
-        <p class="cp-hint">
-          Gebruikt een dedupe-check op titel + startmoment. Bestaande events blijven ongewijzigd.
-        </p>
-      </article>
     </div>
   `;
 
@@ -429,7 +395,6 @@ async function renderOrganisatieSection(container) {
         ["contact_email", readInputValue(card, "contact_email")],
         ["accent_color", readInputValue(card, "accent_color") || "#4d73ff"],
         ["default_location_id", readInputValue(card, "default_location_id")],
-        ["logo_url", readInputValue(card, "logo_url")],
       ];
 
       const error = await upsertSettings(brandId, pairs);
@@ -461,7 +426,6 @@ async function renderOrganisatieSection(container) {
     const error = await upsertSettings(brandId, [
       ["event_title_presets", container.querySelector("#cp-event-title-presets").value.trim()],
       ["physical_location_presets", container.querySelector("#cp-physical-location-presets").value.trim()],
-      ["online_location_presets", container.querySelector("#cp-online-location-presets").value.trim()],
     ]);
 
     if (error) {
@@ -472,25 +436,6 @@ async function renderOrganisatieSection(container) {
     showToast(`Booking presets opgeslagen voor ${getBrandLabel(brandId)}.`, "success");
   };
 
-  const importButton = container.querySelector("#cp-import-event-catalog");
-  importButton.onclick = async () => {
-    importButton.disabled = true;
-    importButton.textContent = "Importeren...";
-
-    try {
-      const result = await importEventCatalog2026();
-      const invalidText = result.invalid ? `, ${result.invalid} ongeldig` : "";
-      showToast(
-        `Import voltooid: ${result.inserted} toegevoegd, ${result.skipped} overgeslagen, ${result.corrected || 0} gecorrigeerd${invalidText}.`,
-        "success"
-      );
-    } catch (error) {
-      showToast(`Import mislukt: ${error.message}`, "error");
-    } finally {
-      importButton.disabled = false;
-      importButton.textContent = "Importeer events";
-    }
-  };
 }
 
 async function renderLocatiesSection(container) {
