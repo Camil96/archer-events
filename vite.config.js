@@ -17,6 +17,7 @@ export default defineConfig({
   publicDir: "public",
   server: {
     port: 3000,
+    allowedHosts: ["sb-1upo7t3fvxuo.vercel.run"],
   },
   build: {
     outDir: "dist",
