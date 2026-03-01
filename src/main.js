@@ -90,9 +90,10 @@ function renderLogin(container) {
           <h1 style="
             margin:0;
             font-family:Inter,system-ui,-apple-system,sans-serif;
-            font-size:clamp(2rem,4.8vw,3rem);
-            line-height:1.05;
+            font-size:clamp(1.25rem,3.6vw,1.5rem);
+            line-height:1.15;
             color:#000000;
+            white-space:nowrap;
           ">Log in met je e-mailadres</h1>
 
           <p id="login-headline" style="
