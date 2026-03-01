@@ -43,7 +43,7 @@ const Login: React.FC = () => {
             className="mx-auto h-12 w-auto"
           />
           <p className="mt-4 text-sm tracking-[0.18em] uppercase text-neutral-600">Archer Events</p>
-          <h1 className="mt-2 text-3xl font-bold text-neutral-900">Log in met je e-mailadres</h1>
+          <h1 className="mt-2 text-xl sm:text-2xl font-bold text-neutral-900 whitespace-nowrap">Log in met je e-mailadres</h1>
           <p className="mt-2 text-neutral-700">We sturen je een beveiligde link.</p>
         </div>
 
