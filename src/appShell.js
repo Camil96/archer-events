@@ -750,7 +750,6 @@ async function openModal(event) {
       timezone: overlay.querySelector('#m-tz').value,
       description: event?.description || '', // Keep description as is since we removed the field but might still want to preserve it or just pass empty
       notes_internal: overlay.querySelector('#m-notes').value,
-      budget: parseFloat(overlay.querySelector('#m-budget').value) || null,
     };
     if (!payload.title) {
       showToast('Titel is verplicht.', 'error');
