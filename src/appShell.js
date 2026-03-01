@@ -9,6 +9,15 @@ import {
   listAvailableUsers, listAuditLog, getDashboardStats,
   assignTask, unassignTask,
   importEventCatalog2026,
+  listCateringItems,
+  listEventCatering,
+  saveEventCateringLine,
+  deleteEventCatering,
+  getEventBudget,
+  saveEventBudget,
+  getFinanceOverview,
+  buildFinanceCsvRows,
+  buildParticipantsCsvRows,
   store
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
@@ -36,6 +45,7 @@ import {
 let activePage = 'Dashboard';
 let rootEl;
 let filters = { brand: '', search: '', period: '' };
+let financeFilters = { brand: '', period: 'year', status: '', search: '' };
 let catalogImportStarted = false;
 let brandVisualSettingsById = {};
 let globalBrandFilter = getBrandDbValue(store.brandId || "Academy");
@@ -89,6 +99,7 @@ async function render() {
   brandVisualSettingsById = await fetchBrandVisualSettings();
   filters.brand = globalBrandFilter || '';
   const canManageEvents = ['Dashboard', 'Calendar'].includes(activePage);
+  const canExportFinance = activePage === 'Finance';
   const shellBrandKey = resolveShellBrandKey();
   const shellBrandVisual = getBrandVisualSettings(shellBrandKey);
   const shellThemeVars = getBrandCssVars(shellBrandKey, shellBrandVisual);
@@ -119,6 +130,7 @@ async function render() {
           <div class="nav-label">Overzichten</div>
           <a class="nav-item ${activePage === 'Dashboard' ? 'active' : ''}" data-page="Dashboard"><span class="nav-icon">📊</span>Dashboard</a>
           <a class="nav-item ${activePage === 'Calendar' ? 'active' : ''}" data-page="Calendar"><span class="nav-icon">📅</span>Kalender</a>
+          <a class="nav-item ${activePage === 'Finance' ? 'active' : ''}" data-page="Finance"><span class="nav-icon">💶</span>Financiën</a>
         </div>
 
         <div class="nav-section">
@@ -163,7 +175,7 @@ async function render() {
                   ${globalBrandOptions}
                 </select>
               </label>
-              ${canManageEvents ? `<button id="export-csv" class="btn-secondary">⬇ Export CSV</button>` : ""}
+              ${canManageEvents || canExportFinance ? `<button id="export-csv" class="btn-secondary">⬇ Export CSV</button>` : ""}
               ${canManageEvents ? `<button id="add-event" class="btn-primary">+ Nieuw event</button>` : ""}
             </div>
           </div>
@@ -245,6 +257,16 @@ async function render() {
   // Export CSV
   const exportBtn = rootEl.querySelector('#export-csv');
   if (exportBtn) exportBtn.onclick = async () => {
+    if (activePage === 'Finance') {
+      const result = await getFinanceOverview({
+        ...financeFilters,
+        brand: financeFilters.brand || globalBrandFilter || '',
+      });
+      const rows = buildFinanceCsvRows(result.rows || []);
+      downloadCSV(rows, `financien-${new Date().toISOString().slice(0, 10)}.csv`);
+      return;
+    }
+
     const events = await listEvents(getActiveEventFilters());
     downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
@@ -277,6 +299,8 @@ async function loadContent() {
   try {
     if (activePage === 'Admin') {
       await renderSettings(container);
+    } else if (activePage === 'Finance') {
+      await renderFinanceOverview(container);
     } else if (activePage === 'Calendar') {
       const events = await listEvents(activeFilters);
       renderCalendar(container, events, (ev) => openModal(ev));
@@ -305,6 +329,174 @@ async function renderDashboard(container) {
     </div>`;
 
   renderFilters(container, events);
+}
+
+function formatEuro(value) {
+  const numeric = Number.parseFloat(value);
+  const safeNumber = Number.isFinite(numeric) ? numeric : 0;
+  return new Intl.NumberFormat('nl-BE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(safeNumber);
+}
+
+function formatPercent(value) {
+  const numeric = Number.parseFloat(value);
+  if (!Number.isFinite(numeric)) return '-';
+  return `${numeric.toFixed(1)}%`;
+}
+
+async function renderFinanceOverview(container) {
+  const effectiveFilters = {
+    ...financeFilters,
+    brand: financeFilters.brand || globalBrandFilter || '',
+  };
+  const result = await getFinanceOverview(effectiveFilters);
+  const rows = result.rows || [];
+  const kpis = result.kpis || {};
+  const monthly = result.monthly || [];
+  const maxBarValue = Math.max(
+    1,
+    ...monthly.map((item) => Math.max(Number(item.costs || 0), Number(item.income || 0)))
+  );
+
+  container.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-num">${esc(formatEuro(kpis.total_costs || 0))}</div><div class="stat-label">Totale kosten (YTD)</div></div>
+      <div class="stat-card"><div class="stat-num">${esc(formatEuro(kpis.total_income || 0))}</div><div class="stat-label">Totale inkomsten (YTD)</div></div>
+      <div class="stat-card"><div class="stat-num">${esc(formatEuro(kpis.net_result || 0))}</div><div class="stat-label">Netto resultaat (YTD)</div></div>
+      <div class="stat-card"><div class="stat-num">${esc(formatEuro(kpis.avg_cost_per_event || 0))}</div><div class="stat-label">Gemiddelde kost per event</div></div>
+    </div>
+
+    <div class="filter-bar finance-filter-bar">
+      <select id="finance-brand-filter" class="filter-select">
+        <option value="" ${!effectiveFilters.brand ? 'selected' : ''}>Alle merken</option>
+        <option value="Academy" ${effectiveFilters.brand === 'Academy' ? 'selected' : ''}>Academy</option>
+        <option value="Invest" ${effectiveFilters.brand === 'Invest' ? 'selected' : ''}>Invest</option>
+        <option value="Fund" ${effectiveFilters.brand === 'Fund' ? 'selected' : ''}>Fund</option>
+      </select>
+      <select id="finance-period-filter" class="filter-select">
+        <option value="month" ${effectiveFilters.period === 'month' ? 'selected' : ''}>Deze maand</option>
+        <option value="quarter" ${effectiveFilters.period === 'quarter' ? 'selected' : ''}>Dit kwartaal</option>
+        <option value="year" ${effectiveFilters.period === 'year' || !effectiveFilters.period ? 'selected' : ''}>Dit jaar</option>
+      </select>
+      <select id="finance-status-filter" class="filter-select">
+        <option value="" ${!effectiveFilters.status ? 'selected' : ''}>Alle statussen</option>
+        <option value="gepland" ${effectiveFilters.status === 'gepland' ? 'selected' : ''}>Gepland</option>
+        <option value="bevestigd" ${effectiveFilters.status === 'bevestigd' ? 'selected' : ''}>Bevestigd</option>
+        <option value="afgerond" ${effectiveFilters.status === 'afgerond' ? 'selected' : ''}>Afgerond</option>
+        <option value="geannuleerd" ${effectiveFilters.status === 'geannuleerd' ? 'selected' : ''}>Geannuleerd</option>
+      </select>
+      <input type="search" id="finance-search-filter" class="filter-input" value="${esc(effectiveFilters.search || '')}" placeholder="Zoek event..." />
+      <button id="finance-export-csv" class="btn-secondary">⬇ Exporteer CSV</button>
+    </div>
+
+    <div class="card finance-chart-card">
+      <h3>Kosten vs inkomsten per maand</h3>
+      ${
+        monthly.length
+          ? `<div class="finance-chart-grid">
+              ${monthly
+                .map((item) => {
+                  const costHeight = Math.max(6, (Number(item.costs || 0) / maxBarValue) * 120);
+                  const incomeHeight = Math.max(6, (Number(item.income || 0) / maxBarValue) * 120);
+                  return `
+                    <div class="finance-bar-group">
+                      <div class="finance-bars">
+                        <div class="finance-bar finance-bar-cost" style="height:${costHeight}px" title="Kosten: ${esc(formatEuro(item.costs || 0))}"></div>
+                        <div class="finance-bar finance-bar-income" style="height:${incomeHeight}px" title="Inkomsten: ${esc(formatEuro(item.income || 0))}"></div>
+                      </div>
+                      <div class="finance-bar-label">${esc(item.month)}</div>
+                    </div>
+                  `;
+                })
+                .join('')}
+            </div>`
+          : '<p class="muted">Nog geen data beschikbaar voor de gekozen filters.</p>'
+      }
+    </div>
+
+    <div class="card finance-table-card">
+      <h3>Financieel overzicht events</h3>
+      ${
+        rows.length
+          ? `
+            <div class="table-wrap">
+              <table class="event-table finance-table">
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Brand</th>
+                    <th>Datum</th>
+                    <th>Status</th>
+                    <th>Totale kost</th>
+                    <th>Totale inkomst</th>
+                    <th>Netto</th>
+                    <th>Kost/deelnemer</th>
+                    <th>Marge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows
+                    .map(
+                      (row) => `
+                    <tr class="finance-row-open" data-event-id="${row.event_id}">
+                      <td><strong>${esc(row.title || '-')}</strong></td>
+                      <td>${esc(row.brand || '-')}</td>
+                      <td>${esc(formatDate(row.start_at))}</td>
+                      <td>${esc(row.status || 'gepland')}</td>
+                      <td>${esc(formatEuro(row.totals?.total_costs || 0))}</td>
+                      <td>${esc(formatEuro(row.totals?.total_income || 0))}</td>
+                      <td>${esc(formatEuro(row.totals?.net_result || 0))}</td>
+                      <td>${esc(formatEuro(row.totals?.cost_per_participant || 0))}</td>
+                      <td>${esc(formatPercent(row.totals?.margin_percent))}</td>
+                    </tr>
+                  `
+                    )
+                    .join('')}
+                </tbody>
+              </table>
+            </div>
+          `
+          : `<div class="empty-card"><p>Geen financiële data voor de gekozen filters.</p></div>`
+      }
+    </div>
+  `;
+
+  const applyFilterChanges = async () => {
+    financeFilters.brand = container.querySelector('#finance-brand-filter')?.value || '';
+    financeFilters.period = container.querySelector('#finance-period-filter')?.value || 'year';
+    financeFilters.status = container.querySelector('#finance-status-filter')?.value || '';
+    financeFilters.search = container.querySelector('#finance-search-filter')?.value?.trim() || '';
+    container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+    await renderFinanceOverview(container);
+  };
+
+  container.querySelector('#finance-brand-filter')?.addEventListener('change', applyFilterChanges);
+  container.querySelector('#finance-period-filter')?.addEventListener('change', applyFilterChanges);
+  container.querySelector('#finance-status-filter')?.addEventListener('change', applyFilterChanges);
+  container.querySelector('#finance-search-filter')?.addEventListener('input', applyFilterChanges);
+
+  container.querySelector('#finance-export-csv')?.addEventListener('click', () => {
+    const exportRows = buildFinanceCsvRows(rows);
+    downloadCSV(exportRows, `finance-overzicht-${new Date().toISOString().slice(0, 10)}.csv`);
+  });
+
+  container.querySelectorAll('.finance-row-open').forEach((rowEl) => {
+    rowEl.addEventListener('click', async () => {
+      const eventId = rowEl.dataset.eventId;
+      if (!eventId) return;
+      const allEvents = await listEvents({ brand: '', period: '', search: '' });
+      const selectedEvent = allEvents.find((event) => String(event.id) === String(eventId));
+      if (!selectedEvent) {
+        showToast('Event niet gevonden.', 'error');
+        return;
+      }
+      openModal(selectedEvent);
+    });
+  });
 }
 
 // ─── FILTERS ─────────────────────────────────────────────────
@@ -441,6 +633,8 @@ async function openModal(event) {
         <div class="tab active" data-tab="details">📋 Info</div>
         ${isEdit ? `
         <div class="tab" data-tab="participants">👥 Deelnemers</div>
+        <div class="tab" data-tab="catering-budget">🍽 Catering & Budget</div>
+        <div class="tab" data-tab="financial-overview">💶 Financieel overzicht</div>
         <div class="tab" data-tab="tasks">✅ Taken</div>
         <div class="tab" data-tab="attachments">📎 Bijlagen</div>` : ''}
       </div>
@@ -498,6 +692,8 @@ async function openModal(event) {
 
         ${isEdit ? `
         <div id="tab-participants" style="display:none;"></div>
+        <div id="tab-catering-budget" style="display:none;"></div>
+        <div id="tab-financial-overview" style="display:none;"></div>
         <div id="tab-tasks" style="display:none;"></div>
         <div id="tab-attachments" style="display:none;"></div>` : ''}
       </div>
@@ -725,14 +921,16 @@ async function openModal(event) {
   overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
     overlay.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active');
-    ['details', 'participants', 'tasks', 'attachments'].forEach(n => {
+    ['details', 'participants', 'catering-budget', 'financial-overview', 'tasks', 'attachments'].forEach(n => {
       const el = overlay.querySelector(`#tab-${n}`);
       if (el) el.style.display = 'none';
     });
     const view = overlay.querySelector(`#tab-${t.dataset.tab}`);
     if (view) view.style.display = 'block';
 
-    if (t.dataset.tab === 'participants') renderParticipantsTab(view, event.id);
+    if (t.dataset.tab === 'participants') renderParticipantsTab(view, event);
+    if (t.dataset.tab === 'catering-budget') renderEventCateringBudgetTab(view, event);
+    if (t.dataset.tab === 'financial-overview') renderEventFinancialOverviewTab(view, event);
     if (t.dataset.tab === 'tasks') renderTasksTab(view, event.id, availableUsers, userMap);
     if (t.dataset.tab === 'attachments') renderAttachmentsTab(view, event.id);
   });
@@ -864,28 +1062,20 @@ async function fetchEventModalSettings(brandId) {
 }
 
 async function fetchCateringOptionRows() {
-  const selectVariants = [
-    'id,name,brand,is_active,price_amount,price,price_currency,currency,supplier_name,supplier',
-    'id,name,brand,is_active,price_amount,price,price_currency,currency,supplier',
-    'id,name,brand,is_active,price_amount,price',
-    'id,name,brand,is_active',
-    'id,name,is_active',
-    'id,name',
-  ];
-
-  for (const columns of selectVariants) {
-    try {
-      const { data, error } = await supabase.from('catering_options').select(columns).order('name');
-      if (!error) return data || [];
-
-      const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
-      if (message.includes('relation') && message.includes('catering_options')) return [];
-    } catch {
-      // Try next variant.
-    }
+  try {
+    const items = await listCateringItems({ includeInactive: true });
+    return items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      brand: item.brand_key,
+      is_active: item.is_active,
+      price_amount: item.unit_price,
+      price_currency: 'EUR',
+      supplier_name: item.supplier_name || '',
+    }));
+  } catch {
+    return [];
   }
-
-  return [];
 }
 
 function getModalSettingValue(settingsRows, key) {
@@ -1099,6 +1289,7 @@ function getActiveEventFilters() {
 function getActivePageTitle() {
   if (activePage === 'Admin') return 'Instellingen';
   if (activePage === 'Calendar') return 'Kalender';
+  if (activePage === 'Finance') return 'Financiën';
   if (activePage === 'Dashboard') return 'Dashboard';
   return 'Dashboard';
 }
@@ -1153,7 +1344,9 @@ function errorHasColumn(error, columnName) {
 }
 
 // ─── PARTICIPANTS TAB ─────────────────────────────────────────
-async function renderParticipantsTab(container, eventId) {
+async function renderParticipantsTab(container, eventRef) {
+  const eventId = typeof eventRef === 'object' ? eventRef?.id : eventRef;
+  const eventBrand = typeof eventRef === 'object' ? eventRef?.brand : '';
   container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
   const participants = await listParticipants(eventId);
 
@@ -1215,12 +1408,12 @@ async function renderParticipantsTab(container, eventId) {
 
       row.querySelector('.p-status-select').onchange = async (e) => {
         await updateParticipant(p.id, { status: e.target.value });
-        renderParticipantsTab(container, eventId);
+        renderParticipantsTab(container, eventRef);
       };
       row.querySelector('.p-del-btn').onclick = async () => {
         if (confirm('Deelnemer verwijderen?')) {
           await deleteParticipant(p.id);
-          renderParticipantsTab(container, eventId);
+          renderParticipantsTab(container, eventRef);
         }
       };
       list.appendChild(row);
@@ -1245,12 +1438,471 @@ async function renderParticipantsTab(container, eventId) {
       return;
     }
     await addParticipant(payload);
-    renderParticipantsTab(container, eventId);
+    renderParticipantsTab(container, eventRef);
   };
 
   container.querySelector('#p-export-btn').onclick = () => {
-    downloadCSV(participants, `deelnemers-${eventId}.csv`);
+    const exportRows = buildParticipantsCsvRows(
+      participants.map((participant) => ({
+        ...participant,
+        brand: participant.brand || eventBrand || globalBrandFilter || '',
+      }))
+    );
+    downloadCSV(exportRows, `deelnemers-${eventId}.csv`);
   };
+}
+
+function toBudgetNumber(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeGenericCostRows(rows = []) {
+  return (rows || []).map((row) => ({
+    description: String(row?.description || row?.name || '').trim(),
+    amount: toBudgetNumber(row?.amount),
+  }));
+}
+
+function normalizeSpeakerCostRows(rows = []) {
+  return (rows || []).map((row) => ({
+    name: String(row?.name || row?.description || '').trim(),
+    fee: toBudgetNumber(row?.fee ?? row?.amount),
+    travel: toBudgetNumber(row?.travel),
+  }));
+}
+
+function computeBudgetTotals(state, participantsCount, cateringTotal) {
+  const locationCost = toBudgetNumber(state.location_cost);
+  const speakerTotal = (state.speaker_costs || []).reduce(
+    (sum, row) => sum + toBudgetNumber(row?.fee) + toBudgetNumber(row?.travel),
+    0
+  );
+  const materialTotal = (state.material_costs || []).reduce((sum, row) => sum + toBudgetNumber(row?.amount), 0);
+  const marketingTotal = (state.marketing_costs || []).reduce((sum, row) => sum + toBudgetNumber(row?.amount), 0);
+  const otherTotal = (state.other_costs || []).reduce((sum, row) => sum + toBudgetNumber(row?.amount), 0);
+  const totalCosts = locationCost + cateringTotal + speakerTotal + materialTotal + marketingTotal + otherTotal;
+  const ticketPrice = toBudgetNumber(state.ticket_price);
+  const hasIncomeOverride = state.income_override !== null && state.income_override !== undefined && state.income_override !== '';
+  const totalIncome = hasIncomeOverride ? toBudgetNumber(state.income_override) : participantsCount * ticketPrice;
+  const netResult = totalIncome - totalCosts;
+  const breakEven = ticketPrice > 0 ? totalCosts / ticketPrice : null;
+  const costPerParticipant = participantsCount > 0 ? totalCosts / participantsCount : null;
+  const marginPercent = totalIncome > 0 ? (netResult / totalIncome) * 100 : null;
+
+  return {
+    locationCost,
+    speakerTotal,
+    materialTotal,
+    marketingTotal,
+    otherTotal,
+    totalCosts,
+    ticketPrice,
+    totalIncome,
+    netResult,
+    breakEven,
+    costPerParticipant,
+    marginPercent,
+  };
+}
+
+function renderBudgetRows(rows = [], sectionKey, withTravel = false) {
+  if (!rows.length) {
+    return `<p class="muted">Nog geen regels.</p>`;
+  }
+
+  return rows
+    .map((row, index) => {
+      if (withTravel) {
+        return `
+          <div class="finance-line-row">
+            <input class="finance-line-input" data-section="${sectionKey}" data-index="${index}" data-field="name" value="${esc(row.name || '')}" placeholder="Naam spreker" />
+            <input class="finance-line-input" type="number" step="0.01" data-section="${sectionKey}" data-index="${index}" data-field="fee" value="${toBudgetNumber(
+              row.fee
+            )}" placeholder="Honorarium" />
+            <input class="finance-line-input" type="number" step="0.01" data-section="${sectionKey}" data-index="${index}" data-field="travel" value="${toBudgetNumber(
+              row.travel
+            )}" placeholder="Reiskosten" />
+            <button class="btn-ghost btn-sm" data-remove-section="${sectionKey}" data-index="${index}" type="button">✕</button>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="finance-line-row">
+          <input class="finance-line-input" data-section="${sectionKey}" data-index="${index}" data-field="description" value="${esc(
+            row.description || ''
+          )}" placeholder="Omschrijving" />
+          <input class="finance-line-input" type="number" step="0.01" data-section="${sectionKey}" data-index="${index}" data-field="amount" value="${toBudgetNumber(
+            row.amount
+          )}" placeholder="Bedrag" />
+          <button class="btn-ghost btn-sm" data-remove-section="${sectionKey}" data-index="${index}" type="button">✕</button>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+async function renderEventCateringBudgetTab(container, event) {
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const [participants, items, lines] = await Promise.all([
+    listParticipants(event.id).catch(() => []),
+    listCateringItems({ brand_key: normalizeBrandForSettings(event.brand), includeInactive: false }).catch(() => []),
+    listEventCatering(event.id).catch(() => []),
+  ]);
+
+  const participantCount = participants.length || Number(event.expected_attendance || event.capacity || 0) || 0;
+  const totalCatering = lines.reduce((sum, line) => sum + toBudgetNumber(line.total_incl_vat), 0);
+  const perParticipant = participantCount > 0 ? totalCatering / participantCount : null;
+
+  container.innerHTML = `
+    <div class="finance-summary-grid">
+      <div class="card finance-summary-card">
+        <h4>Totaal catering</h4>
+        <strong>${esc(formatEuro(totalCatering))}</strong>
+      </div>
+      <div class="card finance-summary-card">
+        <h4>Deelnemers</h4>
+        <strong>${participantCount || 0}</strong>
+      </div>
+      <div class="card finance-summary-card">
+        <h4>Kost per deelnemer</h4>
+        <strong>${esc(perParticipant === null ? '-' : formatEuro(perParticipant))}</strong>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Catering toevoegen</h4>
+      <div class="finance-add-row">
+        <select id="event-catering-item" class="filter-select">
+          <option value="">Kies cateringoptie</option>
+          ${items
+            .map(
+              (item) =>
+                `<option value="${item.id}">${esc(item.name)} · ${esc(item.unit || 'per persoon')} · ${esc(formatEuro(item.unit_price))}</option>`
+            )
+            .join('')}
+        </select>
+        <input id="event-catering-quantity" class="filter-input" type="number" min="1" step="1" value="${participantCount || 1}" />
+        <button id="event-catering-add" class="btn-primary">Toevoegen</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="event-table finance-table">
+        <thead>
+          <tr>
+            <th>Optie</th>
+            <th>Aantal</th>
+            <th>Eenheidsprijs</th>
+            <th>BTW</th>
+            <th>Subtotaal excl.</th>
+            <th>BTW bedrag</th>
+            <th>Totaal incl.</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${
+            lines.length
+              ? lines
+                  .map(
+                    (line) => `
+                <tr>
+                  <td>${esc(line.name || '-')}</td>
+                  <td><input type="number" min="1" step="1" class="finance-inline-input" data-line-id="${line.id}" data-field="quantity" value="${line.quantity || 1}" /></td>
+                  <td><input type="number" min="0" step="0.01" class="finance-inline-input" data-line-id="${line.id}" data-field="unit_price" value="${toBudgetNumber(
+                    line.unit_price
+                  )}" /></td>
+                  <td><input type="number" min="0" step="0.01" class="finance-inline-input" data-line-id="${line.id}" data-field="vat_rate" value="${toBudgetNumber(
+                    line.vat_rate
+                  )}" /></td>
+                  <td>${esc(formatEuro(line.subtotal_excl_vat || 0))}</td>
+                  <td>${esc(formatEuro(line.vat_amount || 0))}</td>
+                  <td><strong>${esc(formatEuro(line.total_incl_vat || 0))}</strong></td>
+                  <td class="cp-ta-right"><button class="btn-ghost btn-sm" data-action="delete-catering-line" data-line-id="${line.id}">✕</button></td>
+                </tr>
+              `
+                  )
+                  .join('')
+              : `<tr><td colspan="8" class="muted">Nog geen catering gekoppeld aan dit event.</td></tr>`
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="finance-actions">
+      <button id="event-catering-save-all" class="btn-secondary">Wijzigingen opslaan</button>
+      <button id="event-catering-refresh" class="btn-ghost">Vernieuwen</button>
+    </div>
+  `;
+
+  container.querySelector('#event-catering-add')?.addEventListener('click', async () => {
+    const itemId = container.querySelector('#event-catering-item')?.value || '';
+    const quantity = Number.parseInt(container.querySelector('#event-catering-quantity')?.value || '1', 10) || 1;
+    if (!itemId) {
+      showToast('Kies eerst een cateringoptie.', 'error');
+      return;
+    }
+    try {
+      await saveEventCateringLine({
+        event_id: event.id,
+        catering_item_id: itemId,
+        quantity,
+      });
+      showToast('Cateringregel toegevoegd.', 'success');
+      await renderEventCateringBudgetTab(container, event);
+    } catch (error) {
+      showToast(`Toevoegen mislukt: ${error.message}`, 'error');
+    }
+  });
+
+  container.querySelectorAll('[data-action="delete-catering-line"]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const lineId = button.dataset.lineId;
+      if (!lineId) return;
+      if (!confirm('Cateringregel verwijderen?')) return;
+      try {
+        await deleteEventCatering(lineId);
+        showToast('Cateringregel verwijderd.', 'success');
+        await renderEventCateringBudgetTab(container, event);
+      } catch (error) {
+        showToast(`Verwijderen mislukt: ${error.message}`, 'error');
+      }
+    });
+  });
+
+  container.querySelector('#event-catering-save-all')?.addEventListener('click', async () => {
+    const updates = [...container.querySelectorAll('.finance-inline-input[data-line-id]')].reduce((acc, input) => {
+      const lineId = input.dataset.lineId;
+      const field = input.dataset.field;
+      if (!lineId || !field) return acc;
+      if (!acc[lineId]) acc[lineId] = {};
+      if (field === 'quantity') acc[lineId].quantity = Number.parseInt(input.value || '1', 10) || 1;
+      if (field === 'unit_price') acc[lineId].unit_price_override = toBudgetNumber(input.value);
+      if (field === 'vat_rate') acc[lineId].vat_rate = toBudgetNumber(input.value);
+      return acc;
+    }, {});
+
+    try {
+      await Promise.all(
+        Object.entries(updates).map(([lineId, payload]) => {
+          const original = lines.find((line) => String(line.id) === String(lineId));
+          return saveEventCateringLine({
+            id: lineId,
+            event_id: event.id,
+            catering_item_id: original?.catering_item_id,
+            quantity: payload.quantity ?? original?.quantity ?? 1,
+            unit_price_override:
+              payload.unit_price_override !== undefined ? payload.unit_price_override : original?.unit_price,
+            vat_rate: payload.vat_rate !== undefined ? payload.vat_rate : original?.vat_rate,
+          });
+        })
+      );
+      showToast('Cateringwijzigingen opgeslagen.', 'success');
+      await renderEventCateringBudgetTab(container, event);
+    } catch (error) {
+      showToast(`Opslaan mislukt: ${error.message}`, 'error');
+    }
+  });
+
+  container.querySelector('#event-catering-refresh')?.addEventListener('click', async () => {
+    await renderEventCateringBudgetTab(container, event);
+  });
+}
+
+async function renderEventFinancialOverviewTab(container, event) {
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const [participants, cateringLines] = await Promise.all([
+    listParticipants(event.id).catch(() => []),
+    listEventCatering(event.id).catch(() => []),
+  ]);
+  const participantsCount = participants.length || Number(event.expected_attendance || event.capacity || 0) || 0;
+  const cateringTotal = cateringLines.reduce((sum, line) => sum + toBudgetNumber(line.total_incl_vat), 0);
+  let budget = null;
+  try {
+    budget = await getEventBudget(event.id, { participantsCount, cateringLines });
+  } catch {
+    budget = {
+      location_cost: 0,
+      speaker_costs: [],
+      material_costs: [],
+      marketing_costs: [],
+      other_costs: [],
+      ticket_price: 0,
+      income_override: null,
+      notes: '',
+    };
+  }
+
+  const state = {
+    location_cost: budget.location_cost || 0,
+    speaker_costs: normalizeSpeakerCostRows(budget.speaker_costs || []),
+    material_costs: normalizeGenericCostRows(budget.material_costs || []),
+    marketing_costs: normalizeGenericCostRows(budget.marketing_costs || []),
+    other_costs: normalizeGenericCostRows(budget.other_costs || []),
+    ticket_price: budget.ticket_price || 0,
+    income_override: budget.income_override ?? '',
+    notes: budget.notes || '',
+  };
+
+  const renderView = () => {
+    const totals = computeBudgetTotals(state, participantsCount, cateringTotal);
+
+    container.innerHTML = `
+      <div class="card finance-budget-card">
+        <div class="finance-budget-head">
+          <h4>Financieel overzicht</h4>
+          <div class="finance-actions">
+            <button class="btn-secondary" id="budget-save">Opslaan</button>
+            <button class="btn-ghost" id="budget-print">Print / PDF</button>
+          </div>
+        </div>
+
+        <div class="finance-budget-section">
+          <h5>1. Locatiekost (forfait)</h5>
+          <input class="finance-line-input" type="number" step="0.01" data-field="location_cost" value="${toBudgetNumber(
+            state.location_cost
+          )}" />
+        </div>
+
+        <div class="finance-budget-section">
+          <h5>2. Cateringkost (automatisch)</h5>
+          <p><strong>${esc(formatEuro(cateringTotal))}</strong> op basis van gekoppelde cateringlijnen.</p>
+        </div>
+
+        <div class="finance-budget-section">
+          <div class="finance-section-title-row">
+            <h5>3. Sprekerkosten</h5>
+            <button class="btn-ghost btn-sm" data-add-section="speaker_costs" type="button">+ Regel</button>
+          </div>
+          ${renderBudgetRows(state.speaker_costs, 'speaker_costs', true)}
+        </div>
+
+        <div class="finance-budget-section">
+          <div class="finance-section-title-row">
+            <h5>4. Materiaalkosten</h5>
+            <button class="btn-ghost btn-sm" data-add-section="material_costs" type="button">+ Regel</button>
+          </div>
+          ${renderBudgetRows(state.material_costs, 'material_costs')}
+        </div>
+
+        <div class="finance-budget-section">
+          <div class="finance-section-title-row">
+            <h5>5. Marketingkosten</h5>
+            <button class="btn-ghost btn-sm" data-add-section="marketing_costs" type="button">+ Regel</button>
+          </div>
+          ${renderBudgetRows(state.marketing_costs, 'marketing_costs')}
+        </div>
+
+        <div class="finance-budget-section">
+          <div class="finance-section-title-row">
+            <h5>6. Overige kosten</h5>
+            <button class="btn-ghost btn-sm" data-add-section="other_costs" type="button">+ Regel</button>
+          </div>
+          ${renderBudgetRows(state.other_costs, 'other_costs')}
+        </div>
+
+        <div class="finance-budget-section">
+          <h5>7. Inkomsten / Ticketverkoop</h5>
+          <div class="finance-line-row">
+            <input class="finance-line-input" type="number" step="0.01" data-field="ticket_price" value="${toBudgetNumber(
+              state.ticket_price
+            )}" placeholder="Ticketprijs" />
+            <input class="finance-line-input" type="number" step="0.01" data-field="income_override" value="${state.income_override}" placeholder="Forfait inkomst (optioneel)" />
+          </div>
+          <p class="muted">Deelnemers: ${participantsCount}</p>
+        </div>
+
+        <div class="finance-budget-section">
+          <h5>Notities</h5>
+          <textarea class="finance-notes" data-field="notes" rows="3">${esc(state.notes || '')}</textarea>
+        </div>
+
+        <div class="finance-total-grid">
+          <div class="finance-total-item"><span>Totale kosten</span><strong>${esc(formatEuro(totals.totalCosts))}</strong></div>
+          <div class="finance-total-item"><span>Totale inkomsten</span><strong>${esc(formatEuro(totals.totalIncome))}</strong></div>
+          <div class="finance-total-item"><span>Netto resultaat</span><strong>${esc(formatEuro(totals.netResult))}</strong></div>
+          <div class="finance-total-item"><span>Break-even deelnemers</span><strong>${esc(
+            totals.breakEven === null ? '-' : totals.breakEven.toFixed(2)
+          )}</strong></div>
+          <div class="finance-total-item"><span>Kostprijs per deelnemer</span><strong>${esc(
+            totals.costPerParticipant === null ? '-' : formatEuro(totals.costPerParticipant)
+          )}</strong></div>
+          <div class="finance-total-item"><span>Marge %</span><strong>${esc(
+            totals.marginPercent === null ? '-' : `${totals.marginPercent.toFixed(1)}%`
+          )}</strong></div>
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll('[data-add-section]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const section = button.dataset.addSection;
+        if (!section || !Array.isArray(state[section])) return;
+        if (section === 'speaker_costs') state[section].push({ name: '', fee: 0, travel: 0 });
+        else state[section].push({ description: '', amount: 0 });
+        renderView();
+      });
+    });
+
+    container.querySelectorAll('[data-remove-section]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const section = button.dataset.removeSection;
+        const index = Number.parseInt(button.dataset.index || '-1', 10);
+        if (!section || !Array.isArray(state[section]) || index < 0) return;
+        state[section].splice(index, 1);
+        renderView();
+      });
+    });
+
+    container.querySelectorAll('[data-section][data-index][data-field]').forEach((input) => {
+      input.addEventListener('input', () => {
+        const section = input.dataset.section;
+        const index = Number.parseInt(input.dataset.index || '-1', 10);
+        const field = input.dataset.field;
+        if (!section || !field || !Array.isArray(state[section]) || index < 0) return;
+        const target = state[section][index] || {};
+        target[field] = ['amount', 'fee', 'travel'].includes(field) ? toBudgetNumber(input.value) : input.value;
+        state[section][index] = target;
+      });
+    });
+
+    container.querySelectorAll('[data-field]:not([data-section])').forEach((input) => {
+      input.addEventListener('input', () => {
+        const field = input.dataset.field;
+        if (!field) return;
+        if (field === 'notes') state.notes = input.value;
+        if (field === 'ticket_price' || field === 'location_cost') state[field] = toBudgetNumber(input.value);
+        if (field === 'income_override') state.income_override = input.value;
+      });
+    });
+
+    container.querySelector('#budget-save')?.addEventListener('click', async () => {
+      try {
+        await saveEventBudget(event.id, {
+          location_cost: state.location_cost,
+          speaker_costs: state.speaker_costs,
+          material_costs: state.material_costs,
+          marketing_costs: state.marketing_costs,
+          other_costs: state.other_costs,
+          ticket_price: state.ticket_price,
+          income_override: state.income_override === '' ? null : toBudgetNumber(state.income_override),
+          notes: state.notes,
+        });
+        showToast('Eventbudget opgeslagen.', 'success');
+        renderView();
+      } catch (error) {
+        showToast(`Opslaan mislukt: ${error.message}`, 'error');
+      }
+    });
+
+    container.querySelector('#budget-print')?.addEventListener('click', () => {
+      window.print();
+    });
+  };
+
+  renderView();
 }
 
 // ─── TASKS TAB ────────────────────────────────────────────────
