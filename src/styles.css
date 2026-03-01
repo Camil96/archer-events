@@ -1961,10 +1961,15 @@ textarea:focus-visible {
 
 .cp-card-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.cp-card-head .cp-btn {
+  flex-shrink: 0;
 }
 
 .cp-card-head h3,

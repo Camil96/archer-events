@@ -9,17 +9,7 @@ import {
   getBrandLogoWordmark,
   normalizeHexColor,
 } from "../config.js";
-import {
-  importEventCatalog2026,
-  store,
-  listProfiles,
-  uploadProfileAvatar,
-  listBrandSettings,
-  saveBrandSetting,
-  listAuditEntries,
-  listCateringItems,
-  saveCateringItem,
-} from "../store.js";
+import { store } from "../store.js";
 import { esc, showToast } from "../utils.js";
 
 const BRANDS = [
@@ -59,7 +49,7 @@ const SECTION_DEFS = [
   { id: "auditlog", icon: "◱", label: "Audit log", description: "Traceer kritieke wijzigingen." },
 ];
 
-const FACILITY_OPTIONS = ["WiFi", "Catering", "Parking", "AV-installatie", "Livestream", "Kleedkamers"];
+const FACILITY_OPTIONS = ["WiFi", "Catering", "Parking", "AV-installatie"];
 
 const NOTIFICATION_TRIGGERS = [
   { key: "invite", label: "Uitnodiging deelnemer" },
@@ -80,12 +70,6 @@ const DEFAULT_EVENT_TITLE_PRESETS = [
 
 const DEFAULT_PHYSICAL_LOCATION_PRESETS = ["Aula Archer", "Seneca", "Kantoor Archer"].join(", ");
 
-const DEFAULT_ONLINE_LOCATION_PRESETS = [
-  "Zoom meeting|Online - Zoom|https://zoom.us/j/",
-  "Microsoft Teams|Online - Teams|https://teams.microsoft.com/l/meetup-join/",
-  "Google Meet|Online - Google Meet|https://meet.google.com/",
-].join("\n");
-
 const EXPORT_FIELDS = [
   "title",
   "location",
@@ -100,7 +84,7 @@ const EXPORT_FIELDS = [
 ];
 
 const BRAND_IDS = BRANDS.map((b) => b.id);
-const BRAND_VISUAL_KEYS = ["accent_color", "brand_name", "logo_url"];
+const BRAND_VISUAL_KEYS = ["accent_color", "brand_name"];
 
 const state = {
   root: null,
@@ -276,12 +260,10 @@ async function loadSection(sectionId) {
 }
 
 async function renderOrganisatieSection(container) {
-  const [settingsRows, locations, brandSettingsRows] = await Promise.all([
+  const [settingsRows, locations] = await Promise.all([
     fetchAppSettings(BRAND_IDS),
     fetchRows("locations", { columns: "id,name,city,is_active", orderBy: "name" }),
-    listBrandSettings().catch(() => []),
   ]);
-  const brandSettingsMap = new Map((brandSettingsRows || []).map((row) => [row.brand_key, row]));
 
   const locationOptions = (locations || []).filter((location) => location.is_active !== false);
   const bookingTitlePresets = getSetting(
@@ -313,17 +295,13 @@ async function renderOrganisatieSection(container) {
 
     <div class="cp-stack">
       ${BRANDS.map((brand) => {
-        const brandSetting = brandSettingsMap.get(brand.id) || {};
         const brandName = normalizeBrandDisplayName(
-          brandSetting.label || getSetting(settingsRows, brand.id, "brand_name", getBrandDisplayName(brand.id)),
+          getSetting(settingsRows, brand.id, "brand_name", getBrandDisplayName(brand.id)),
           brand.id
         );
         const contactEmail = getSetting(settingsRows, brand.id, "contact_email", brand.fallbackEmail);
-        const accentColor =
-          normalizeHexColor(brandSetting.primary_color || getSetting(settingsRows, brand.id, "accent_color", brand.fallbackColor)) ||
-          brand.fallbackColor;
+        const accentColor = getSetting(settingsRows, brand.id, "accent_color", brand.fallbackColor);
         const defaultLocationId = getSetting(settingsRows, brand.id, "default_location_id", "");
-        const logoUrl = brandSetting.logo_url || getSetting(settingsRows, brand.id, "logo_url", "");
 
         return `
           <article class="cp-card cp-brand-card" data-brand-id="${brand.id}">
@@ -372,10 +350,6 @@ async function renderOrganisatieSection(container) {
                 </select>
               </label>
 
-              <label class="cp-field cp-col-span-2">
-                <span>Logo URL</span>
-                <input type="url" data-field="logo_url" value="${esc(logoUrl)}" placeholder="https://..." />
-              </label>
             </div>
           </article>
         `;
@@ -405,32 +379,9 @@ async function renderOrganisatieSection(container) {
             )}</textarea>
           </label>
 
-          <label class="cp-field cp-col-span-2">
-            <span>Online locatiepresets (1 per lijn: label|locatie|url)</span>
-            <textarea id="cp-online-location-presets" rows="4" placeholder="Zoom meeting|Online - Zoom|https://zoom.us/j/">${esc(
-              bookingOnlinePresets
-            )}</textarea>
-          </label>
         </div>
       </article>
 
-      <article class="cp-card">
-        <header class="cp-card-head">
-          <div>
-            <h3>Eventkalender 2026 import</h3>
-            <p>
-              Laad de aangeleverde events uit de planning in zonder duplicaten. Brandmapping:
-              <strong> Forex workshop = Academy + Invest</strong>,
-              <strong> Investor Introduction = Archer Investment Fund</strong>,
-              <strong> Mastermind/Masterclass = Invest</strong>.
-            </p>
-          </div>
-          <button class="cp-btn cp-btn-primary" id="cp-import-event-catalog" type="button">Importeer events</button>
-        </header>
-        <p class="cp-hint">
-          Gebruikt een dedupe-check op titel + startmoment. Bestaande events blijven ongewijzigd.
-        </p>
-      </article>
     </div>
   `;
 
@@ -444,21 +395,9 @@ async function renderOrganisatieSection(container) {
         ["contact_email", readInputValue(card, "contact_email")],
         ["accent_color", readInputValue(card, "accent_color") || "#4d73ff"],
         ["default_location_id", readInputValue(card, "default_location_id")],
-        ["logo_url", readInputValue(card, "logo_url")],
       ];
-      const [brandError, settingsError] = await Promise.all([
-        saveBrandSetting({
-          brand_key: brandId,
-          label: pairs[0][1],
-          primary_color: pairs[2][1],
-          logo_url: pairs[4][1],
-        }).catch((error) => error),
-        upsertSettings(brandId, [
-          ["contact_email", pairs[1][1]],
-          ["default_location_id", pairs[3][1]],
-        ]),
-      ]);
-      const error = brandError instanceof Error ? brandError : settingsError;
+
+      const error = await upsertSettings(brandId, pairs);
       if (error) {
         showToast(`Fout bij opslaan: ${error.message}`, "error");
         return;
@@ -487,7 +426,6 @@ async function renderOrganisatieSection(container) {
     const error = await upsertSettings(brandId, [
       ["event_title_presets", container.querySelector("#cp-event-title-presets").value.trim()],
       ["physical_location_presets", container.querySelector("#cp-physical-location-presets").value.trim()],
-      ["online_location_presets", container.querySelector("#cp-online-location-presets").value.trim()],
     ]);
 
     if (error) {
@@ -498,25 +436,6 @@ async function renderOrganisatieSection(container) {
     showToast(`Booking presets opgeslagen voor ${getBrandLabel(brandId)}.`, "success");
   };
 
-  const importButton = container.querySelector("#cp-import-event-catalog");
-  importButton.onclick = async () => {
-    importButton.disabled = true;
-    importButton.textContent = "Importeren...";
-
-    try {
-      const result = await importEventCatalog2026();
-      const invalidText = result.invalid ? `, ${result.invalid} ongeldig` : "";
-      showToast(
-        `Import voltooid: ${result.inserted} toegevoegd, ${result.skipped} overgeslagen, ${result.corrected || 0} gecorrigeerd${invalidText}.`,
-        "success"
-      );
-    } catch (error) {
-      showToast(`Import mislukt: ${error.message}`, "error");
-    } finally {
-      importButton.disabled = false;
-      importButton.textContent = "Importeer events";
-    }
-  };
 }
 
 async function renderLocatiesSection(container) {
@@ -550,7 +469,7 @@ async function renderLocatiesSection(container) {
                 const facilities = ensureArray(location.facilities);
                 const address = [location.address, location.postal_code, location.city, location.country].filter(Boolean).join(", ");
                 return `
-                  <tr data-created="${esc(String(log.created_at || ""))}">
+                  <tr>
                     <td>
                       <strong>${esc(location.name || "-")}</strong>
                       <small>${esc(location.brand || state.currentBrand)}</small>
@@ -1240,155 +1159,68 @@ function openSessionModal(session, eventTypes = []) {
 
 async function renderGebruikersSection(container) {
   const dashboardUrl = getSupabaseUsersDashboardUrl();
-  const [{ data: authData }, profiles] = await Promise.all([
-    supabase.auth.getUser(),
-    listProfiles(),
-  ]);
-  const currentUserId = authData?.user?.id || "";
-  const currentProfile =
-    profiles.find((profile) => String(profile.id) === String(currentUserId)) || {
-      id: currentUserId,
-      email: authData?.user?.email || "",
-      full_name: authData?.user?.user_metadata?.full_name || "",
-      role: "viewer",
-      brand_access: ["academy", "invest", "fund"],
-      avatar_url: "",
-      language_pref: "nl",
-      responsibilities: "",
-    };
-
-  const roleOptions = [
-    { value: "superadmin", label: "Superadmin" },
-    { value: "admin", label: "Admin" },
-    { value: "finance", label: "Finance" },
-    { value: "event_manager", label: "Event Manager" },
-    { value: "operations", label: "Operations" },
-    { value: "mentor", label: "Mentor" },
-    { value: "viewer", label: "Viewer" },
-  ];
-  const brandOptions = [
-    { key: "academy", label: "Academy" },
-    { key: "invest", label: "Invest" },
-    { key: "fund", label: "Fund" },
-  ];
-  const inviteDefaults = ["academy", "invest", "fund"];
-  const renderAccessCheckboxes = (prefix, values = inviteDefaults) => `
-    <div class="cp-chip-check-wrap cp-chip-check-wrap-compact">
-      ${brandOptions
-        .map(
-          (entry) => `
-        <label class="cp-chip-check">
-          <input type="checkbox" data-brand-access="${entry.key}" data-prefix="${prefix}" ${values.includes(entry.key) ? "checked" : ""} />
-          <span>${entry.label}</span>
-        </label>
-      `
-        )
-        .join("")}
-    </div>
-  `;
+  const { data: profiles, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
 
   container.innerHTML = `
     ${renderSectionHeader({
       title: "Gebruikers & rollen",
       description:
-        "Beheer avatars, rollen, brand-toegang en accountstatus. Alleen admins kunnen gebruikers beheren.",
+        "Admin beheert rollen en merktoewijzing. Uitnodigingen verlopen via Supabase Invite flow voor security en compliance.",
     })}
 
     <div class="cp-grid cp-grid-2">
       <article class="cp-card">
         <header class="cp-card-head">
           <div>
-            <h3>Mijn profiel</h3>
-            <p>Werk je avatar, naam en taalvoorkeur bij.</p>
-          </div>
-        </header>
-
-        <div class="cp-grid cp-grid-2">
-          <div class="cp-field cp-col-span-2">
-            <span>Avatar</span>
-            <div class="cp-profile-row">
-              <div class="cp-avatar-preview">
-                ${
-                  currentProfile?.avatar_url
-                    ? `<img src="${esc(currentProfile.avatar_url)}" alt="Avatar" />`
-                    : `<span>${esc((currentProfile?.full_name || currentProfile?.email || "A").slice(0, 1).toUpperCase())}</span>`
-                }
-              </div>
-              <input id="cp-profile-avatar-file" type="file" accept="image/*" />
-              <button class="cp-btn cp-btn-ghost" id="cp-profile-avatar-upload" type="button">Avatar uploaden</button>
-            </div>
-          </div>
-          <label class="cp-field">
-            <span>Naam</span>
-            <input id="cp-profile-full-name" type="text" value="${esc(currentProfile?.full_name || "")}" placeholder="Jouw naam" />
-          </label>
-          <label class="cp-field">
-            <span>E-mail</span>
-            <input type="email" value="${esc(currentProfile?.email || "")}" readonly />
-          </label>
-          <label class="cp-field">
-            <span>Rol</span>
-            <input type="text" value="${esc(currentProfile?.role || "viewer")}" readonly />
-          </label>
-          <label class="cp-field">
-            <span>Taalvoorkeur</span>
-            <select id="cp-profile-language">
-              <option value="nl" ${String(currentProfile?.language_pref || "nl") === "nl" ? "selected" : ""}>Nederlands</option>
-              <option value="en" ${String(currentProfile?.language_pref || "") === "en" ? "selected" : ""}>English</option>
-            </select>
-          </label>
-          <div class="cp-field cp-col-span-2">
-            <span>Brand-toegang</span>
-            ${renderTagList(currentProfile?.brand_access || [])}
-          </div>
-          <label class="cp-field cp-col-span-2">
-            <span>Verantwoordelijkheden</span>
-            <textarea rows="2" readonly>${esc(currentProfile?.responsibilities || "-")}</textarea>
-          </label>
-        </div>
-        <div class="cp-row-actions cp-row-actions-end">
-          <button class="cp-btn cp-btn-primary" id="cp-save-own-profile" type="button">Mijn profiel opslaan</button>
-        </div>
-      </article>
-
-      <article class="cp-card">
-        <header class="cp-card-head">
-          <div>
             <h3>Nieuwe gebruiker uitnodigen</h3>
-            <p>Verstuur een beveiligde link en zet rol + brand-toegang klaar.</p>
+            <p>Gebruik Supabase Authentication invite. Deze app stuurt je naar de juiste pagina.</p>
           </div>
           <button class="cp-btn cp-btn-ghost" id="cp-open-supabase-users" type="button">Open Supabase Users</button>
         </header>
 
-        <div class="cp-grid cp-grid-2">
-          <label class="cp-field">
-            <span>Naam (optioneel)</span>
-            <input id="cp-invite-name" type="text" placeholder="Naam gebruiker" />
-          </label>
-          <label class="cp-field">
+        <div class="cp-grid cp-grid-3">
+          <label class="cp-field cp-col-span-2">
             <span>E-mail</span>
             <input id="cp-invite-email" type="email" placeholder="naam@bedrijf.com" />
           </label>
           <label class="cp-field">
             <span>Rol</span>
             <select id="cp-invite-role">
-              <option value="superadmin">Superadmin</option>
               <option value="admin">admin</option>
-              <option value="finance">finance</option>
-              <option value="event_manager">event_manager</option>
-              <option value="operations" selected>operations</option>
-              <option value="mentor">mentor</option>
+              <option value="ops" selected>ops</option>
               <option value="viewer">viewer</option>
             </select>
           </label>
+          <label class="cp-field">
+            <span>Merk</span>
+            <select id="cp-invite-brand">
+              ${renderBrandOptions(state.currentBrand)}
+            </select>
+          </label>
           <div class="cp-field cp-col-span-2">
-            <span>Brand toegang</span>
-            ${renderAccessCheckboxes("invite", inviteDefaults)}
+            <span>Workflow</span>
+            <p class="cp-hint">1) Vul gegevens in 2) klik op voorbereiden 3) plak in interne SOP of invite ticket.</p>
           </div>
         </div>
 
         <div class="cp-row-actions cp-row-actions-end">
-          <button class="cp-btn cp-btn-primary" id="cp-send-invite" type="button">Uitnodiging sturen</button>
+          <button class="cp-btn cp-btn-primary" id="cp-prepare-invite" type="button">Invite voorbereiden</button>
+        </div>
+      </article>
+
+      <article class="cp-card">
+        <header class="cp-card-head">
+          <div>
+            <h3>Rollenmodel</h3>
+            <p>Duidelijke rechten per teamtype.</p>
+          </div>
+        </header>
+
+        <div class="cp-role-grid">
+          <div><strong>admin</strong><small>Volledige toegang tot alle settings en operationele modules.</small></div>
+          <div><strong>ops</strong><small>Events, deelnemers, check-in en export beheren.</small></div>
+          <div><strong>viewer</strong><small>Read-only toegang voor stakeholders en management.</small></div>
         </div>
       </article>
     </div>
@@ -1399,14 +1231,12 @@ async function renderGebruikersSection(container) {
         <table class="cp-table">
           <thead>
             <tr>
-              <th>Avatar</th>
               <th>Naam</th>
               <th>E-mail</th>
               <th>Rol</th>
-              <th>Brand-toegang</th>
-              <th>Verantwoordelijkheden</th>
+              <th>Merk</th>
               <th>Aangemaakt</th>
-              <th>Laatst login</th>
+              <th>Laatst actief</th>
               <th>Status</th>
               <th class="cp-ta-right">Acties</th>
             </tr>
@@ -1415,46 +1245,35 @@ async function renderGebruikersSection(container) {
             ${profiles
               .map((profile) => {
                 const lastSeen = profile.last_sign_in_at || profile.last_seen_at || profile.updated_at || "";
-                const isInvited = String(profile.status || "").toLowerCase() === "uitgenodigd";
-                const isActive = profile.is_active !== false && !["inactief", "inactive"].includes(String(profile.status || "").toLowerCase());
-                const avatar = profile.avatar_url
-                  ? `<img src="${esc(profile.avatar_url)}" alt="${esc(profile.full_name || profile.email || "avatar")}" class="cp-avatar-small" />`
-                  : `<span class="cp-avatar-small cp-avatar-small-fallback">${esc((profile.full_name || profile.email || "A").slice(0, 1).toUpperCase())}</span>`;
+                const isActive = profile.is_active !== false;
                 return `
                   <tr>
-                    <td>${avatar}</td>
                     <td>
-                      <input type="text" class="cp-inline-input" data-field="full_name" data-id="${profile.id}" value="${esc(profile.full_name || "")}" placeholder="Naam" />
+                      <strong>${esc(profile.full_name || "-")}</strong>
                       <small>${esc(profile.id || "")}</small>
                     </td>
                     <td>${esc(profile.email || "-")}</td>
                     <td>
                       <select class="cp-inline-select" data-field="role" data-id="${profile.id}">
-                        ${roleOptions
-                          .map(
-                            (role) =>
-                              `<option value="${role.value}" ${profile.role === role.value ? "selected" : ""}>${role.label}</option>`
-                          )
-                          .join("")}
+                        <option value="admin" ${profile.role === "admin" ? "selected" : ""}>admin</option>
+                        <option value="ops" ${profile.role === "ops" ? "selected" : ""}>ops</option>
+                        <option value="viewer" ${profile.role === "viewer" ? "selected" : ""}>viewer</option>
                       </select>
                     </td>
                     <td>
-                      ${renderAccessCheckboxes(`row-${profile.id}`, profile.brand_access || inviteDefaults)}
-                    </td>
-                    <td>
-                      <textarea class="cp-inline-input" rows="2" data-field="responsibilities" data-id="${profile.id}" placeholder="Verantwoordelijkheden">${esc(
-                        profile.responsibilities || ""
-                      )}</textarea>
+                      <select class="cp-inline-select" data-field="brand_id" data-id="${profile.id}">
+                        ${renderBrandOptions(profile.brand_id || "academy")}
+                      </select>
                     </td>
                     <td>${formatDateCell(profile.created_at)}</td>
                     <td>${formatDateCell(lastSeen)}</td>
-                    <td>${isInvited ? '<span class="cp-status cp-status-warning">Uitgenodigd</span>' : renderStatusBadge(isActive)}</td>
+                    <td>${renderStatusBadge(isActive)}</td>
                     <td class="cp-ta-right">
                       <div class="cp-row-actions cp-row-actions-end">
-                        <button class="cp-btn-link" data-action="toggle-profile-status" data-id="${profile.id}" data-active="${String(isActive)}" type="button">
-                          ${isActive ? "Deactiveren" : "Activeren"}
-                        </button>
-                        <button class="cp-btn-link" data-action="resend-invite" data-email="${esc(profile.email || "")}" type="button">Uitnodiging opnieuw</button>
+                        <label class="cp-inline-toggle">
+                          <input type="checkbox" data-field="is_active" data-id="${profile.id}" ${isActive ? "checked" : ""} />
+                          <span>Actief</span>
+                        </label>
                         <button class="cp-btn-link" data-action="save-profile" data-id="${profile.id}" type="button">Opslaan</button>
                       </div>
                     </td>
@@ -1473,196 +1292,51 @@ async function renderGebruikersSection(container) {
     window.open(dashboardUrl, "_blank", "noopener,noreferrer");
   };
 
-  const ownProfileSaveBtn = container.querySelector("#cp-save-own-profile");
-  if (ownProfileSaveBtn) {
-    ownProfileSaveBtn.onclick = async () => {
-      if (!currentUserId) {
-        showToast("Ingelogde gebruiker niet gevonden.", "error");
-        return;
-      }
-
-      const payload = {
-        full_name: container.querySelector("#cp-profile-full-name").value.trim(),
-        language_pref: container.querySelector("#cp-profile-language").value,
-      };
-
-      const { error } = await saveRecord({
-        table: "profiles",
-        id: currentUserId,
-        payload,
-        optionalColumns: ["language_pref", "full_name"],
-      });
-
-      if (error) {
-        showToast(`Profiel opslaan mislukt: ${error.message}`, "error");
-        return;
-      }
-
-      showToast("Profiel bijgewerkt.", "success");
-      await loadSection("gebruikers");
-    };
-  }
-
-  const ownAvatarUploadBtn = container.querySelector("#cp-profile-avatar-upload");
-  if (ownAvatarUploadBtn) {
-    ownAvatarUploadBtn.onclick = async () => {
-      if (!currentUserId) {
-        showToast("Ingelogde gebruiker niet gevonden.", "error");
-        return;
-      }
-
-      const fileInput = container.querySelector("#cp-profile-avatar-file");
-      const file = fileInput?.files?.[0];
-      if (!file) {
-        showToast("Selecteer eerst een afbeelding.", "error");
-        return;
-      }
-
-      ownAvatarUploadBtn.disabled = true;
-      ownAvatarUploadBtn.textContent = "Uploaden...";
-      try {
-        await uploadProfileAvatar(currentUserId, file);
-        showToast("Avatar opgeslagen.", "success");
-        await loadSection("gebruikers");
-      } catch (error) {
-        showToast(`Avatar upload mislukt: ${error.message}`, "error");
-      } finally {
-        ownAvatarUploadBtn.disabled = false;
-        ownAvatarUploadBtn.textContent = "Avatar uploaden";
-      }
-    };
-  }
-
-  container.querySelector("#cp-send-invite").onclick = async () => {
+  container.querySelector("#cp-prepare-invite").onclick = async () => {
     const email = container.querySelector("#cp-invite-email").value.trim();
-    const fullName = container.querySelector("#cp-invite-name").value.trim();
     const role = container.querySelector("#cp-invite-role").value;
-    const brandAccess = [...container.querySelectorAll("[data-prefix='invite'][data-brand-access]:checked")].map(
-      (checkbox) => checkbox.dataset.brandAccess
-    );
+    const brand = container.querySelector("#cp-invite-brand").value;
 
     if (!email) {
       showToast("Vul een e-mailadres in.", "error");
       return;
     }
 
-    const redirectBase = import.meta.env.VITE_APP_URL?.trim() || window.location.origin;
-    const { error: inviteError } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: redirectBase.replace(/\/+$/, "") + "/",
-      },
-    });
-
-    if (inviteError) {
-      showToast(`Uitnodiging versturen mislukt: ${inviteError.message}`, "error");
-      return;
-    }
-
-    await supabase
-      .from("profiles")
-      .upsert(
-        {
-          email,
-          full_name: fullName || null,
-          role,
-          brand_access: brandAccess.length ? brandAccess : inviteDefaults,
-          status: "uitgenodigd",
-          invited_at: new Date().toISOString(),
-        },
-        { onConflict: "email" }
-      )
-      .then(() => null)
-      .catch(() => null);
-
     const instruction = [
       "Supabase Invite voorbereiding",
       `Email: ${email}`,
-      fullName ? `Naam: ${fullName}` : null,
       `Rol: ${role}`,
-      `Brand toegang: ${(brandAccess.length ? brandAccess : inviteDefaults).join(", ")}`,
+      `Merk: ${brand}`,
       `Open: ${dashboardUrl}`,
       "Stap: Authentication > Users > Invite user",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].join("\n");
 
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(instruction).catch(() => null);
     }
 
-    showToast(`Uitnodiging verstuurd naar ${email}.`, "success");
-    await loadSection("gebruikers");
+    showToast("Invite instructie voorbereid en dashboard-link geopend.", "success");
+    window.open(dashboardUrl, "_blank", "noopener,noreferrer");
   };
-
-  container.querySelectorAll("[data-action='resend-invite']").forEach((btn) => {
-    btn.onclick = async () => {
-      const email = String(btn.dataset.email || "").trim();
-      if (!email) {
-        showToast("Geen e-mailadres beschikbaar.", "error");
-        return;
-      }
-
-      const redirectBase = import.meta.env.VITE_APP_URL?.trim() || window.location.origin;
-      const { error: inviteError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: redirectBase.replace(/\/+$/, "") + "/",
-        },
-      });
-      if (inviteError) {
-        showToast(`Uitnodiging opnieuw sturen mislukt: ${inviteError.message}`, "error");
-        return;
-      }
-      showToast(`Uitnodiging opnieuw verstuurd naar ${email}.`, "success");
-    };
-  });
-
-  container.querySelectorAll("[data-action='toggle-profile-status']").forEach((btn) => {
-    btn.onclick = async () => {
-      const id = btn.dataset.id;
-      const active = btn.dataset.active === "true";
-      const payload = {
-        is_active: !active,
-        status: !active ? "actief" : "inactief",
-      };
-      const { error } = await saveRecord({
-        table: "profiles",
-        id,
-        payload,
-        optionalColumns: ["is_active", "status"],
-      });
-      if (error) {
-        showToast(`Status aanpassen mislukt: ${error.message}`, "error");
-        return;
-      }
-      showToast("Gebruikerstatus bijgewerkt.", "success");
-      await loadSection("gebruikers");
-    };
-  });
 
   container.querySelectorAll("[data-action='save-profile']").forEach((btn) => {
     btn.onclick = async () => {
       const id = btn.dataset.id;
       const roleEl = container.querySelector(`select[data-field='role'][data-id='${id}']`);
-      const nameEl = container.querySelector(`input[data-field='full_name'][data-id='${id}']`);
-      const responsibilitiesEl = container.querySelector(`textarea[data-field='responsibilities'][data-id='${id}']`);
-      const brandAccess = [...container.querySelectorAll(`[data-prefix='row-${id}'][data-brand-access]:checked`)].map(
-        (checkbox) => checkbox.dataset.brandAccess
-      );
+      const brandEl = container.querySelector(`select[data-field='brand_id'][data-id='${id}']`);
+      const activeEl = container.querySelector(`input[data-field='is_active'][data-id='${id}']`);
 
       const payload = {
-        full_name: nameEl?.value?.trim() || null,
         role: roleEl?.value,
-        responsibilities: responsibilitiesEl?.value?.trim() || null,
-        brand_access: brandAccess.length ? brandAccess : inviteDefaults,
+        brand_id: brandEl?.value,
+        is_active: !!activeEl?.checked,
       };
 
       const { error } = await saveRecord({
         table: "profiles",
         id,
         payload,
-        optionalColumns: ["full_name", "role", "brand_access", "responsibilities"],
+        optionalColumns: ["is_active", "brand_id"],
       });
 
       if (error) {
@@ -1754,30 +1428,13 @@ async function renderNotificatiesSection(container) {
 }
 
 async function renderCateringSection(container) {
-  const options = await listCateringItems({ brand_key: state.currentBrand, includeInactive: true }).catch(() => []);
-  const typeOptions = ["drank", "eten", "pakket"];
-  const categoryOptions = [
-    "Koffie & water",
-    "Broodjes & lunch",
-    "Diner",
-    "Receptie",
-    "Dagarrangement",
-    "Volledig pakket",
-    "Overig",
-  ];
-  const formatEuro = (value) =>
-    new Intl.NumberFormat("nl-BE", {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(toFiniteNumber(value, 0));
+  const options = await fetchRows("catering_options", { brandScoped: true, orderBy: "name" });
 
   container.innerHTML = `
     ${renderSectionHeader({
       title: "Catering opties",
       description:
-        "Centrale cateringcatalogus met type, eenheid, BTW en prijs. Deze opties worden gebruikt in het eventbudget.",
+        "Centrale cateringcatalogus voor events. Beheer prijs en leverancier zodat eventteams het financiele plaatje volledig kunnen opvolgen.",
       actions: `<button class="cp-btn cp-btn-primary" id="cp-add-catering" type="button">+ Optie toevoegen</button>`,
     })}
 
@@ -1788,12 +1445,9 @@ async function renderCateringSection(container) {
           <thead>
             <tr>
               <th>Naam</th>
-              <th>Type</th>
-              <th>Categorie</th>
-              <th>Eenheid</th>
+              <th>Beschrijving</th>
               <th>Prijs</th>
-              <th>BTW</th>
-              <th>Brand</th>
+              <th>Leverancier</th>
               <th>Status</th>
               <th class="cp-ta-right">Acties</th>
             </tr>
@@ -1801,15 +1455,15 @@ async function renderCateringSection(container) {
           <tbody>
             ${options
               .map((option) => {
+                const priceAmount = getCateringPriceAmount(option);
+                const priceCurrency = getCateringCurrency(option);
+                const supplierName = getCateringSupplier(option) || "-";
                 return `
                   <tr>
                     <td><strong>${esc(option.name || "-")}</strong></td>
-                    <td>${esc(option.type || typeOptions[0])}</td>
-                    <td>${esc(option.category || categoryOptions[6])}</td>
-                    <td>${esc(option.unit || "per persoon")}</td>
-                    <td>${esc(formatEuro(option.unit_price))}</td>
-                    <td>${esc(`${toFiniteNumber(option.vat_rate, 6).toFixed(2)}%`)}</td>
-                    <td>${esc(option.brand_key || "all")}</td>
+                    <td>${esc(option.description || "-")}</td>
+                    <td>${priceAmount === null ? "-" : esc(formatCurrencyValue(priceAmount, priceCurrency))}</td>
+                    <td>${esc(supplierName)}</td>
                     <td>${renderStatusBadge(option.is_active !== false)}</td>
                     <td class="cp-ta-right">
                       <div class="cp-row-actions cp-row-actions-end">
@@ -1842,12 +1496,14 @@ async function renderCateringSection(container) {
   container.querySelectorAll("[data-action='toggle-catering']").forEach((btn) => {
     btn.onclick = async () => {
       const isActive = btn.dataset.active === "true";
-      const option = options.find((entry) => String(entry.id) === String(btn.dataset.id));
-      if (!option) return;
+      const { error } = await saveRecord({
+        table: "catering_options",
+        id: btn.dataset.id,
+        payload: { is_active: !isActive },
+        optionalColumns: ["is_active"],
+      });
 
-      try {
-        await saveCateringItem({ ...option, is_active: !isActive });
-      } catch (error) {
+      if (error) {
         showToast(`Statusupdate mislukt: ${error.message}`, "error");
         return;
       }
@@ -1860,87 +1516,59 @@ async function renderCateringSection(container) {
 
 function openCateringModal(option) {
   const isEdit = !!option;
-  const categoryOptions = [
-    "Koffie & water",
-    "Broodjes & lunch",
-    "Diner",
-    "Receptie",
-    "Dagarrangement",
-    "Volledig pakket",
-    "Overig",
-  ];
-  const typeOptions = ["drank", "eten", "pakket"];
-  const unitOptions = ["per persoon", "per stuk", "forfait"];
-  const vatOptions = [6, 12, 21];
-  const brandScope = ["all", "academy", "invest", "fund"];
+  const priceAmount = getCateringPriceAmount(option);
+  const currency = getCateringCurrency(option);
+  const supplierName = getCateringSupplier(option);
+  const supplierPreset = supplierName.toLowerCase() === "fuel" ? "Fuel" : supplierName ? "Ander" : "Fuel";
+  const currencyOptions = [...new Set(["EUR", "USD", "GBP", currency].filter(Boolean))];
 
   const overlay = openModal({
     title: isEdit ? "Catering optie bewerken" : "Nieuwe catering optie",
-    description: "Gebruik vaste opties voor consistente pricing en BTW-berekeningen.",
+    description: "Gebruik vaste opties voor consistente hospitality service levels.",
     saveLabel: isEdit ? "Opslaan" : "Aanmaken",
     body: `
       <div class="cp-grid cp-grid-2">
-        <label class="cp-field">
+        <label class="cp-field cp-col-span-2">
           <span>Naam</span>
           <input id="cp-catering-name" type="text" value="${esc(option?.name || "")}" placeholder="Drank + lunch" />
         </label>
 
+        <label class="cp-field cp-col-span-2">
+          <span>Beschrijving</span>
+          <textarea id="cp-catering-description" rows="3" placeholder="Inhoud van dit cateringpakket">${esc(
+            option?.description || ""
+          )}</textarea>
+        </label>
+
         <label class="cp-field">
-          <span>Type</span>
-          <select id="cp-catering-type">
-            ${typeOptions
-              .map((entry) => `<option value="${entry}" ${String(option?.type || "eten") === entry ? "selected" : ""}>${entry}</option>`)
-              .join("")}
+          <span>Prijs</span>
+          <div class="cp-inline-input-row cp-inline-input-row-price">
+            <input id="cp-catering-price" type="number" min="0" step="0.01" value="${priceAmount ?? ""}" placeholder="0.00" />
+            <select id="cp-catering-currency">
+              ${currencyOptions.map((code) => `<option value="${code}" ${currency === code ? "selected" : ""}>${code}</option>`).join("")}
+            </select>
+          </div>
+        </label>
+
+        <label class="cp-field">
+          <span>Leverancier</span>
+          <select id="cp-catering-supplier">
+            <option value="Fuel" ${supplierPreset === "Fuel" ? "selected" : ""}>Fuel</option>
+            <option value="Ander" ${supplierPreset === "Ander" ? "selected" : ""}>Ander</option>
           </select>
         </label>
 
-        <label class="cp-field">
-          <span>Categorie</span>
-          <select id="cp-catering-category">
-            ${categoryOptions
-              .map(
-                (entry) => `<option value="${entry}" ${String(option?.category || "Overig") === entry ? "selected" : ""}>${entry}</option>`
-              )
-              .join("")}
-          </select>
+        <label class="cp-field cp-col-span-2 ${supplierPreset === "Ander" ? "" : "cp-hidden"}" id="cp-catering-supplier-other-wrap">
+          <span>Leverancier (ander)</span>
+          <input
+            id="cp-catering-supplier-other"
+            type="text"
+            value="${esc(supplierPreset === "Ander" ? supplierName : "")}"
+            placeholder="Naam leverancier"
+          />
         </label>
 
-        <label class="cp-field">
-          <span>Eenheid</span>
-          <select id="cp-catering-unit">
-            ${unitOptions
-              .map((entry) => `<option value="${entry}" ${String(option?.unit || "per persoon") === entry ? "selected" : ""}>${entry}</option>`)
-              .join("")}
-          </select>
-        </label>
-
-        <label class="cp-field">
-          <span>Eenheidsprijs (EUR)</span>
-          <input id="cp-catering-price" type="number" min="0" step="0.01" value="${toFiniteNumber(option?.unit_price, 0)}" placeholder="0,00" />
-        </label>
-
-        <label class="cp-field">
-          <span>BTW-tarief</span>
-          <select id="cp-catering-vat">
-            ${vatOptions
-              .map((entry) => `<option value="${entry}" ${toFiniteNumber(option?.vat_rate, 6) === entry ? "selected" : ""}>${entry}%</option>`)
-              .join("")}
-          </select>
-        </label>
-
-        <label class="cp-field">
-          <span>Brand scope</span>
-          <select id="cp-catering-brand-key">
-            ${brandScope
-              .map(
-                (entry) =>
-                  `<option value="${entry}" ${String(option?.brand_key || state.currentBrand || "all") === entry ? "selected" : ""}>${entry}</option>`
-              )
-              .join("")}
-          </select>
-        </label>
-
-        <label class="cp-field cp-toggle-field">
+        <label class="cp-field cp-toggle-field cp-col-span-2">
           <span>Actief</span>
           <input id="cp-catering-active" type="checkbox" ${option?.is_active !== false ? "checked" : ""} />
         </label>
@@ -1953,27 +1581,43 @@ function openCateringModal(option) {
         return false;
       }
 
-      const parsedPrice = toFiniteNumber(overlay.querySelector("#cp-catering-price").value, NaN);
-      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      const rawPrice = overlay.querySelector("#cp-catering-price").value.trim();
+      const parsedPrice = rawPrice === "" ? null : Number.parseFloat(rawPrice);
+      if (rawPrice && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) {
         showToast("Prijs moet een geldig positief bedrag zijn.", "error");
         return false;
       }
 
+      const supplierPresetValue = overlay.querySelector("#cp-catering-supplier").value;
+      const supplierOther = overlay.querySelector("#cp-catering-supplier-other")?.value.trim() || "";
+      if (supplierPresetValue === "Ander" && !supplierOther) {
+        showToast("Geef een leverancier in bij 'Ander'.", "error");
+        return false;
+      }
+      const supplierResolved = supplierPresetValue === "Ander" ? supplierOther : "Fuel";
+      const selectedCurrency = overlay.querySelector("#cp-catering-currency").value || "EUR";
+
       const payload = {
-        id: option?.id,
+        brand: state.currentBrand,
         name,
-        type: overlay.querySelector("#cp-catering-type").value,
-        category: overlay.querySelector("#cp-catering-category").value,
-        unit: overlay.querySelector("#cp-catering-unit").value,
-        unit_price: parsedPrice,
-        vat_rate: toFiniteNumber(overlay.querySelector("#cp-catering-vat").value, 6),
-        brand_key: overlay.querySelector("#cp-catering-brand-key").value || "all",
+        description: overlay.querySelector("#cp-catering-description").value.trim(),
+        price_amount: parsedPrice,
+        price: parsedPrice,
+        price_currency: selectedCurrency,
+        currency: selectedCurrency,
+        supplier_name: supplierResolved,
+        supplier: supplierResolved,
         is_active: overlay.querySelector("#cp-catering-active").checked,
       };
 
-      try {
-        await saveCateringItem(payload);
-      } catch (error) {
+      const { error } = await saveRecord({
+        table: "catering_options",
+        id: option?.id,
+        payload,
+        optionalColumns: ["brand", "price_amount", "price", "price_currency", "currency", "supplier_name", "supplier", "is_active"],
+      });
+
+      if (error) {
         showToast(`Opslaan mislukt: ${error.message}`, "error");
         return false;
       }
@@ -1983,7 +1627,15 @@ function openCateringModal(option) {
       return true;
     },
   });
-  return overlay;
+
+  const supplierSelect = overlay.querySelector("#cp-catering-supplier");
+  const supplierOtherWrap = overlay.querySelector("#cp-catering-supplier-other-wrap");
+  const syncSupplierField = () => {
+    const isOther = supplierSelect.value === "Ander";
+    supplierOtherWrap.classList.toggle("cp-hidden", !isOther);
+  };
+  supplierSelect.onchange = syncSupplierField;
+  syncSupplierField();
 }
 
 async function renderExportSection(container) {
@@ -2121,33 +1773,14 @@ async function renderExportSection(container) {
 }
 
 async function renderAuditLogSection(container) {
-  const logs = await listAuditEntries({ limit: 200 });
-  const actionOptions = [...new Set(logs.map((log) => String(log.action || "").trim()).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b, "nl")
-  );
-  const targetOptions = [...new Set(logs.map((log) => String(log.target_type || log.resource_type || "").trim()).filter(Boolean))].sort(
-    (a, b) => a.localeCompare(b, "nl")
-  );
+  const logs = await fetchRows("audit_log", { orderBy: "created_at", ascending: false, limit: 200 });
 
   container.innerHTML = `
     ${renderSectionHeader({
       title: "Audit log",
       description:
         "Overzicht van kritieke acties: wie deed wat, wanneer en op welke entiteit. Handig voor compliance en incidentanalyse.",
-      actions: `
-        <div class="cp-inline-filter-wrap">
-          <input id="cp-audit-search" class="cp-search" type="search" placeholder="Zoek op gebruiker, actie, event..." />
-          <select id="cp-audit-action-filter" class="cp-inline-select">
-            <option value="">Alle acties</option>
-            ${actionOptions.map((action) => `<option value="${esc(action)}">${esc(action)}</option>`).join("")}
-          </select>
-          <select id="cp-audit-target-filter" class="cp-inline-select">
-            <option value="">Alle entiteiten</option>
-            ${targetOptions.map((target) => `<option value="${esc(target)}">${esc(target)}</option>`).join("")}
-          </select>
-          <input id="cp-audit-date-filter" class="cp-inline-input" type="date" />
-        </div>
-      `,
+      actions: `<input id="cp-audit-search" class="cp-search" type="search" placeholder="Zoek op gebruiker, actie of entiteit" />`,
     })}
 
     ${logs.length
@@ -2159,33 +1792,27 @@ async function renderAuditLogSection(container) {
               <th>Tijdstip</th>
               <th>Gebruiker</th>
               <th>Actie</th>
-              <th>Event</th>
               <th>Entiteit</th>
+              <th>Record</th>
               <th>Details</th>
             </tr>
           </thead>
           <tbody>
             ${logs
               .map((log) => {
-                const actor = log.actor_name || log.actor_email || log.user_email || log.user_id || log.actor_id || "-";
+                const actor = log.actor_name || log.actor_email || log.user_email || log.actor_id || "-";
                 const action = log.action || log.event || "-";
-                const entity = log.target_type || log.resource_type || log.table_name || log.entity || "-";
+                const entity = log.table_name || log.entity || "-";
+                const record = log.record_id || log.entity_id || "-";
                 const detail = extractAuditDetail(log);
-                const payload = log.payload || log.metadata || log.new_values || {};
-                const eventTitle =
-                  payload?.event_title ||
-                  payload?.eventName ||
-                  payload?.title ||
-                  log.event_title ||
-                  (String(entity).toLowerCase().includes("event") ? log.target_id || log.resource_id || "-" : "-");
 
                 return `
                   <tr>
                     <td>${formatDateCell(log.created_at)}</td>
                     <td>${esc(actor)}</td>
                     <td><span class="cp-audit-action">${esc(action)}</span></td>
-                    <td>${esc(String(eventTitle || "-"))}</td>
                     <td>${esc(entity)}</td>
+                    <td><code>${esc(String(record).slice(0, 16))}</code></td>
                     <td>${esc(detail)}</td>
                   </tr>
                 `;
@@ -2199,38 +1826,16 @@ async function renderAuditLogSection(container) {
   `;
 
   const searchInput = container.querySelector("#cp-audit-search");
-  const actionFilterEl = container.querySelector("#cp-audit-action-filter");
-  const targetFilterEl = container.querySelector("#cp-audit-target-filter");
-  const dateFilterEl = container.querySelector("#cp-audit-date-filter");
   const rows = [...container.querySelectorAll("#cp-audit-table tbody tr")];
 
-  if (rows.length) {
-    const applyFilters = () => {
+  if (searchInput && rows.length) {
+    searchInput.oninput = () => {
       const query = searchInput.value.trim().toLowerCase();
-      const actionFilter = actionFilterEl?.value?.trim().toLowerCase() || "";
-      const targetFilter = targetFilterEl?.value?.trim().toLowerCase() || "";
-      const dateFilter = dateFilterEl?.value || "";
-
       rows.forEach((row) => {
-        const rowText = row.textContent.toLowerCase();
-        const actionCell = row.children[2]?.textContent?.trim()?.toLowerCase() || "";
-        const targetCell = row.children[4]?.textContent?.trim()?.toLowerCase() || "";
-        const rowCreated = row.getAttribute("data-created") || "";
-        const dateMatch = !dateFilter || rowCreated.startsWith(dateFilter);
-
-        const visible =
-          (!query || rowText.includes(query)) &&
-          (!actionFilter || actionCell.includes(actionFilter)) &&
-          (!targetFilter || targetCell.includes(targetFilter)) &&
-          dateMatch;
+        const visible = !query || row.textContent.toLowerCase().includes(query);
         row.style.display = visible ? "" : "none";
       });
     };
-
-    searchInput.oninput = applyFilters;
-    if (actionFilterEl) actionFilterEl.onchange = applyFilters;
-    if (targetFilterEl) targetFilterEl.onchange = applyFilters;
-    if (dateFilterEl) dateFilterEl.onchange = applyFilters;
   }
 }
 
@@ -2347,11 +1952,6 @@ function parseNullableFloat(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function toFiniteNumber(value, fallback = 0) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function ensureArray(value) {

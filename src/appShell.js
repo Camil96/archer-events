@@ -618,12 +618,11 @@ async function openModal(event) {
 
   overlay.innerHTML = `
     <div class="modal modal-large event-modal" data-brand-theme="${esc(initialBrandKey)}" style="${esc(cssVarsToInlineStyle(initialThemeVars))}">
-      <div class="modal-header" style="padding: 32px 32px 24px;">
+      <div class="modal-header">
         <div class="event-modal-brand">
           <img src="${esc(initialTheme.logoIcon)}" alt="Archer icon" onerror="this.style.display='none'">
           <div>
             <h3>${isEdit ? 'Details: ' + esc(event.title) : 'Nieuw Event'}</h3>
-            <p class="event-modal-subtitle">nieuw event</p>
           </div>
         </div>
         <button class="btn-ghost" id="m-close">✕</button>
@@ -949,7 +948,6 @@ async function openModal(event) {
       timezone: overlay.querySelector('#m-tz').value,
       description: event?.description || '', // Keep description as is since we removed the field but might still want to preserve it or just pass empty
       notes_internal: overlay.querySelector('#m-notes').value,
-      budget: parseFloat(overlay.querySelector('#m-budget').value) || null,
     };
     if (!payload.title) {
       showToast('Titel is verplicht.', 'error');
@@ -1193,13 +1191,24 @@ function buildPhysicalLocationPresets(locationRows, brandForScope, settingsPrese
     url: '',
   }));
 
-  const defaults = DEFAULT_PHYSICAL_LOCATION_PRESETS.map((name) => ({
-    label: name,
-    location: name,
-    url: '',
-  }));
+  // Use locations from DB + settings. Only fall back to hardcoded defaults when neither has entries.
+  const hasDbOrSettingsLocations = fromLocations.length > 0 || fromSettings.length > 0;
+  const defaults = hasDbOrSettingsLocations
+    ? []
+    : DEFAULT_PHYSICAL_LOCATION_PRESETS.filter((n) => n !== 'Ander').map((name) => ({
+        label: name,
+        location: name,
+        url: '',
+      }));
 
-  return uniqueLocationPresets([...fromLocations, ...fromSettings, ...defaults]);
+  const presets = uniqueLocationPresets([...fromLocations, ...fromSettings, ...defaults]);
+
+  // Always append "Ander" as the last option
+  const anderEntry = { label: 'Ander', location: 'Ander', url: '' };
+  const hasAnder = presets.some((p) => p.label.toLowerCase() === 'ander');
+  if (!hasAnder) presets.push(anderEntry);
+
+  return presets;
 }
 
 function buildOnlineLocationPresets(settingsPresets) {
