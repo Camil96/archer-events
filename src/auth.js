@@ -1,24 +1,9 @@
-import { supabase } from "./supabaseClient.js";
+import { getUserByEmail } from "./api/users.js";
+import { verifyPasswordWithHash } from "./utils/passwordHash.js";
 
 const AUTH_STORAGE_KEY = "archer_events_app_user_v1";
 const DEFAULT_BRAND_ACCESS = ["academy", "invest", "fund"];
 const authListeners = new Set();
-const HARDCODED_TEST_ACCOUNTS = {
-  "camilsahnoune@gmail.com": {
-    id: "11111111-1111-1111-1111-111111111111",
-    email: "camilsahnoune@gmail.com",
-    password: "CamilvoorArcher2000!",
-    role: "admin",
-    brand_access: ["academy", "invest", "fund"],
-  },
-  "camil@archer.finance": {
-    id: "22222222-2222-2222-2222-222222222222",
-    email: "camil@archer.finance",
-    password: "CamilvoorArcher2000!",
-    role: "admin",
-    brand_access: ["academy", "invest", "fund"],
-  },
-};
 
 let currentUser = null;
 
@@ -44,6 +29,14 @@ function normalizeBrandAccess(value) {
   return [...DEFAULT_BRAND_ACCESS];
 }
 
+function normalizeStatus(value) {
+  const status = String(value || "active").trim().toLowerCase();
+  if (["invited", "active", "disabled"].includes(status)) return status;
+  if (status === "actief") return "active";
+  if (status === "inactief") return "disabled";
+  return "active";
+}
+
 function normalizeAppUserRow(row = {}) {
   const id = String(row.id || "").trim();
   if (!id) return null;
@@ -53,6 +46,9 @@ function normalizeAppUserRow(row = {}) {
     email: String(row.email || "").trim().toLowerCase(),
     role: normalizeRole(row.role),
     brand_access: normalizeBrandAccess(row.brand_access),
+    first_name: String(row.first_name || "").trim(),
+    last_name: String(row.last_name || "").trim(),
+    status: normalizeStatus(row.status),
   };
 }
 
@@ -91,44 +87,6 @@ function emitAuthStateChange(event) {
       console.error("Auth listener fout:", error);
     }
   });
-}
-
-async function hashPasswordSha256(password) {
-  if (!globalThis.crypto?.subtle) return null;
-
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
-  const bytes = new Uint8Array(digest);
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function isValidPassword(password, storedHash) {
-  const cleanStoredHash = String(storedHash || "").trim();
-  if (!cleanStoredHash) return false;
-
-  // Ondersteunt legacy plain-text records voor tijdelijke migratie.
-  if (cleanStoredHash === password) return true;
-
-  const hashed = await hashPasswordSha256(password);
-  if (!hashed) return false;
-
-  return hashed.toLowerCase() === cleanStoredHash.toLowerCase();
-}
-
-function getHardcodedTestAccount(email, password) {
-  const key = String(email || "").trim().toLowerCase();
-  const account = HARDCODED_TEST_ACCOUNTS[key];
-  if (!account) return null;
-  if (account.password !== String(password || "")) return null;
-
-  return {
-    id: account.id,
-    email: account.email,
-    password_hash: account.password,
-    role: account.role,
-    brand_access: account.brand_access,
-  };
 }
 
 export function renderAuthLoading(container, message = "Authenticatie controleren...") {
@@ -171,8 +129,32 @@ export function getCurrentAppUser() {
   return currentUser;
 }
 
+export function setAuthenticatedUser(user) {
+  const normalized = normalizeAppUserRow(user);
+  if (!normalized) throw new Error("Gebruikerssessie kan niet worden ingesteld.");
+
+  currentUser = normalized;
+  persistCurrentUser();
+  emitAuthStateChange("SIGNED_IN");
+  return currentUser;
+}
+
 export function isAuthenticated() {
   return !!currentUser?.id;
+}
+
+export function hasRole(roles, user = currentUser) {
+  if (!user?.id) return false;
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  const normalized = allowed.map((role) => normalizeRole(role));
+  return normalized.includes(normalizeRole(user.role));
+}
+
+export function hasBrandAccess(brandKey, user = currentUser) {
+  if (!user?.id) return false;
+  const brand = String(brandKey || "").trim().toLowerCase();
+  if (!brand) return true;
+  return normalizeBrandAccess(user.brand_access).includes(brand);
 }
 
 export function subscribeAuthState(onChange) {
@@ -183,56 +165,31 @@ export function subscribeAuthState(onChange) {
 }
 
 export async function loginWithPassword(email, password) {
-  const cleanEmailInput = String(email || "").trim();
-  const cleanEmail = cleanEmailInput.toLowerCase();
+  const cleanEmail = String(email || "").trim().toLowerCase();
   const cleanPassword = String(password || "");
 
-  if (!cleanEmailInput) throw new Error("E-mailadres is verplicht.");
+  if (!cleanEmail) throw new Error("E-mailadres is verplicht.");
   if (!cleanPassword) throw new Error("Wachtwoord is verplicht.");
 
-  const { data, error } = await supabase
-    .from("app_users")
-    .select("*")
-    .ilike("email", cleanEmailInput)
-    .maybeSingle();
-
-  if (import.meta.env.DEV) {
-    const rowCount = Array.isArray(data) ? data.length : data ? 1 : 0;
-    console.log("[login-debug] ingevoerde email:", cleanEmailInput);
-    console.log("[login-debug] app_users query rows:", rowCount);
-  }
-
-  const isNotFoundError = error?.code === "PGRST116";
-
-  if (error && !isNotFoundError) {
-    throw new Error("Inloggen mislukt door een databasefout.");
-  }
-
-  let userRow = data || null;
-
-  if (!userRow) {
-    userRow = getHardcodedTestAccount(cleanEmail, cleanPassword);
-  }
-
-  if (!userRow) {
+  const user = await getUserByEmail(cleanEmail);
+  if (!user) {
     throw new Error("Geen account gevonden voor dit e-mailadres.");
   }
 
-  const validPassword = await isValidPassword(cleanPassword, userRow.password_hash);
+  const status = normalizeStatus(user.status);
+  if (status === "invited") {
+    throw new Error("Je account is nog niet geactiveerd. Gebruik de link uit je uitnodigingsmail.");
+  }
+  if (status === "disabled") {
+    throw new Error("Je account is gedeactiveerd. Neem contact op met een beheerder.");
+  }
+
+  const validPassword = await verifyPasswordWithHash(cleanPassword, user.password_hash);
   if (!validPassword) {
     throw new Error("Onjuist wachtwoord.");
   }
 
-  const nextUser = normalizeAppUserRow(userRow);
-  if (!nextUser) {
-    throw new Error("Gebruikersprofiel is ongeldig.");
-  }
-
-  currentUser = nextUser;
-  persistCurrentUser();
-  emitAuthStateChange("SIGNED_IN");
-
-  return currentUser;
+  return setAuthenticatedUser(user);
 }
 
 export function logoutAppUser() {
@@ -241,9 +198,9 @@ export function logoutAppUser() {
   emitAuthStateChange("SIGNED_OUT");
 }
 
-// Legacy markering: Supabase magic-link login is vervangen door in-app login.
 export const LEGACY_SUPABASE_MAGIC_LINK_ENABLED = false;
 
+// Legacy helpers voor compatibiliteit met oudere imports.
 export function getAuthRedirectUrl() {
   const envUrl = import.meta.env.VITE_APP_URL?.trim();
   const base = envUrl || window.location.origin;

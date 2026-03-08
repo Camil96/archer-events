@@ -7,13 +7,19 @@ import {
   renderAuthLoading,
   subscribeAuthState,
 } from "./auth.js";
-import { renderLoginView } from "./views/Login.js";
+import { renderLoginView } from "./views/Users/Login.js";
+import { renderInviteAcceptView } from "./views/Users/InviteAccept.js";
 import { setStoreAuthContext } from "./store.js";
 import "./styles.css";
 
 const root = document.getElementById("root");
 let currentRender = "loading";
 let unsubscribeAuthListener = null;
+
+function isInviteRoute() {
+  const path = String(window.location.pathname || "").toLowerCase();
+  return path === "/invite" || path === "/uitnodiging";
+}
 
 function applyStoreAuthContext(user) {
   setStoreAuthContext({
@@ -67,6 +73,18 @@ function renderAppIfNeeded() {
   renderAppShell(root, { user });
 }
 
+function renderInviteIfNeeded() {
+  if (!root) return;
+  currentRender = "invite";
+
+  renderInviteAcceptView(root, {
+    onComplete: () => {
+      window.history.replaceState({}, "", "/");
+      renderAppIfNeeded();
+    },
+  });
+}
+
 function bootstrapAuth() {
   if (!root) return;
 
@@ -86,6 +104,11 @@ function bootstrapAuth() {
     });
   }
 
+  if (isInviteRoute()) {
+    renderInviteIfNeeded();
+    return;
+  }
+
   if (isAuthenticated()) {
     renderAppIfNeeded();
     return;
@@ -100,7 +123,6 @@ try {
   showFatalError(error?.message || "Kon authenticatie niet initialiseren.");
 }
 
-// Legacy markering: magic-link / Supabase Auth loginflow is vervangen door in-app login.
 if (currentRender === "loading") {
   renderLoginIfNeeded();
 }

@@ -1,6 +1,7 @@
+// Legacy compat entrypoint.
+// Nieuwe modulaire structuur gebruikt `src/views/Settings/*` en `src/views/Users/*`.
 import { supabase } from "../supabaseClient.js";
 import {
-  SUPABASE_URL,
   computeBrandCssVariables,
   cssVarsToInlineStyle,
   getBrandFullLabel,
@@ -12,6 +13,7 @@ import {
 import { DEFAULT_ONLINE_LOCATION_PRESETS } from "../config/locationPresets.js";
 import { store } from "../store.js";
 import { esc, showToast } from "../utils.js";
+import { renderUserManagement } from "./Users/UserManagement.js";
 
 const BRANDS = [
   {
@@ -1168,196 +1170,7 @@ function openSessionModal(session, eventTypes = []) {
 }
 
 async function renderGebruikersSection(container) {
-  const dashboardUrl = getSupabaseUsersDashboardUrl();
-  const { data: profiles, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
-  if (error) throw error;
-
-  container.innerHTML = `
-    ${renderSectionHeader({
-      title: "Gebruikers & rollen",
-      description:
-        "Admin beheert rollen en merktoewijzing. Uitnodigingen verlopen via Supabase Invite flow voor security en compliance.",
-    })}
-
-    <div class="cp-grid cp-grid-2">
-      <article class="cp-card">
-        <header class="cp-card-head">
-          <div>
-            <h3>Nieuwe gebruiker uitnodigen</h3>
-            <p>Gebruik Supabase Authentication invite. Deze app stuurt je naar de juiste pagina.</p>
-          </div>
-          <button class="cp-btn cp-btn-ghost" id="cp-open-supabase-users" type="button">Open Supabase Users</button>
-        </header>
-
-        <div class="cp-grid cp-grid-3">
-          <label class="cp-field cp-col-span-2">
-            <span>E-mail</span>
-            <input id="cp-invite-email" type="email" placeholder="naam@bedrijf.com" />
-          </label>
-          <label class="cp-field">
-            <span>Rol</span>
-            <select id="cp-invite-role">
-              <option value="admin">admin</option>
-              <option value="ops" selected>ops</option>
-              <option value="viewer">viewer</option>
-            </select>
-          </label>
-          <label class="cp-field">
-            <span>Merk</span>
-            <select id="cp-invite-brand">
-              ${renderBrandOptions(state.currentBrand)}
-            </select>
-          </label>
-          <div class="cp-field cp-col-span-2">
-            <span>Workflow</span>
-            <p class="cp-hint">1) Vul gegevens in 2) klik op voorbereiden 3) plak in interne SOP of invite ticket.</p>
-          </div>
-        </div>
-
-        <div class="cp-row-actions cp-row-actions-end">
-          <button class="cp-btn cp-btn-primary" id="cp-prepare-invite" type="button">Invite voorbereiden</button>
-        </div>
-      </article>
-
-      <article class="cp-card">
-        <header class="cp-card-head">
-          <div>
-            <h3>Rollenmodel</h3>
-            <p>Duidelijke rechten per teamtype.</p>
-          </div>
-        </header>
-
-        <div class="cp-role-grid">
-          <div><strong>admin</strong><small>Volledige toegang tot alle settings en operationele modules.</small></div>
-          <div><strong>ops</strong><small>Events, deelnemers, check-in en export beheren.</small></div>
-          <div><strong>viewer</strong><small>Read-only toegang voor stakeholders en management.</small></div>
-        </div>
-      </article>
-    </div>
-
-    ${profiles?.length
-      ? `
-      <div class="cp-table-card">
-        <table class="cp-table">
-          <thead>
-            <tr>
-              <th>Naam</th>
-              <th>E-mail</th>
-              <th>Rol</th>
-              <th>Merk</th>
-              <th>Aangemaakt</th>
-              <th>Laatst actief</th>
-              <th>Status</th>
-              <th class="cp-ta-right">Acties</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${profiles
-              .map((profile) => {
-                const lastSeen = profile.last_sign_in_at || profile.last_seen_at || profile.updated_at || "";
-                const isActive = profile.is_active !== false;
-                return `
-                  <tr>
-                    <td>
-                      <strong>${esc(profile.full_name || "-")}</strong>
-                      <small>${esc(profile.id || "")}</small>
-                    </td>
-                    <td>${esc(profile.email || "-")}</td>
-                    <td>
-                      <select class="cp-inline-select" data-field="role" data-id="${profile.id}">
-                        <option value="admin" ${profile.role === "admin" ? "selected" : ""}>admin</option>
-                        <option value="ops" ${profile.role === "ops" ? "selected" : ""}>ops</option>
-                        <option value="viewer" ${profile.role === "viewer" ? "selected" : ""}>viewer</option>
-                      </select>
-                    </td>
-                    <td>
-                      <select class="cp-inline-select" data-field="brand_id" data-id="${profile.id}">
-                        ${renderBrandOptions(profile.brand_id || "academy")}
-                      </select>
-                    </td>
-                    <td>${formatDateCell(profile.created_at)}</td>
-                    <td>${formatDateCell(lastSeen)}</td>
-                    <td>${renderStatusBadge(isActive)}</td>
-                    <td class="cp-ta-right">
-                      <div class="cp-row-actions cp-row-actions-end">
-                        <label class="cp-inline-toggle">
-                          <input type="checkbox" data-field="is_active" data-id="${profile.id}" ${isActive ? "checked" : ""} />
-                          <span>Actief</span>
-                        </label>
-                        <button class="cp-btn-link" data-action="save-profile" data-id="${profile.id}" type="button">Opslaan</button>
-                      </div>
-                    </td>
-                  </tr>
-                `;
-              })
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    `
-      : renderEmptyState("Geen gebruikers", "Profiles tabel bevat nog geen records.")}
-  `;
-
-  container.querySelector("#cp-open-supabase-users").onclick = () => {
-    window.open(dashboardUrl, "_blank", "noopener,noreferrer");
-  };
-
-  container.querySelector("#cp-prepare-invite").onclick = async () => {
-    const email = container.querySelector("#cp-invite-email").value.trim();
-    const role = container.querySelector("#cp-invite-role").value;
-    const brand = container.querySelector("#cp-invite-brand").value;
-
-    if (!email) {
-      showToast("Vul een e-mailadres in.", "error");
-      return;
-    }
-
-    const instruction = [
-      "Supabase Invite voorbereiding",
-      `Email: ${email}`,
-      `Rol: ${role}`,
-      `Merk: ${brand}`,
-      `Open: ${dashboardUrl}`,
-      "Stap: Authentication > Users > Invite user",
-    ].join("\n");
-
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(instruction).catch(() => null);
-    }
-
-    showToast("Invite instructie voorbereid en dashboard-link geopend.", "success");
-    window.open(dashboardUrl, "_blank", "noopener,noreferrer");
-  };
-
-  container.querySelectorAll("[data-action='save-profile']").forEach((btn) => {
-    btn.onclick = async () => {
-      const id = btn.dataset.id;
-      const roleEl = container.querySelector(`select[data-field='role'][data-id='${id}']`);
-      const brandEl = container.querySelector(`select[data-field='brand_id'][data-id='${id}']`);
-      const activeEl = container.querySelector(`input[data-field='is_active'][data-id='${id}']`);
-
-      const payload = {
-        role: roleEl?.value,
-        brand_id: brandEl?.value,
-        is_active: !!activeEl?.checked,
-      };
-
-      const { error } = await saveRecord({
-        table: "profiles",
-        id,
-        payload,
-        optionalColumns: ["is_active", "brand_id"],
-      });
-
-      if (error) {
-        showToast(`Gebruiker opslaan mislukt: ${error.message}`, "error");
-        return;
-      }
-
-      showToast("Gebruiker bijgewerkt.", "success");
-      await loadSection("gebruikers");
-    };
-  });
+  await renderUserManagement(container);
 }
 
 async function renderNotificatiesSection(container) {
@@ -2038,16 +1851,6 @@ function extractAuditDetail(log) {
   }
 
   return "-";
-}
-
-function getSupabaseUsersDashboardUrl() {
-  try {
-    const projectRef = new URL(SUPABASE_URL).hostname.split(".")[0];
-    if (!projectRef) return "https://supabase.com/dashboard";
-    return `https://supabase.com/dashboard/project/${projectRef}/auth/users`;
-  } catch {
-    return "https://supabase.com/dashboard";
-  }
 }
 
 function createUuidLike() {

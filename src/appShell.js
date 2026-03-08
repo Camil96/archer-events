@@ -20,7 +20,7 @@ import {
   store
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
-import { renderSettings } from "./views/settings.js";
+import { renderSettings } from "./views/Settings/settings.js";
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcsFile } from "./calendarExport.js";
 import { getCurrentAppUser, logoutAppUser } from "./auth.js";
 

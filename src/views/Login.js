@@ -1,3 +1,5 @@
+// Legacy compat login view.
+// Nieuwe locatie: `src/views/Users/Login.js` (re-export).
 export function renderLoginView(container, options = {}) {
   if (!container) return;
 

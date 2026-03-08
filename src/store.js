@@ -17,7 +17,8 @@ export function setStoreAuthContext(context = {}) {
 }
 
 function shouldScopeByOwner() {
-  return !!authContext.userId && authContext.role !== "admin";
+  if (!authContext.userId) return false;
+  return !["admin", "superadmin"].includes(authContext.role);
 }
 
 function addOwnerContext(payload = {}) {
