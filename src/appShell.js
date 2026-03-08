@@ -18,17 +18,17 @@ import {
   setStoreAuthContext,
   store
 } from "./store.js";
-import { eventsApi, inferEventCategory, seedArcherAcademyEvents2026 } from "./api/events.js";
+import { eventsApi, seedArcherAcademyEvents2026 } from "./api/events.js";
 import { renderCalendar } from "./calendar.js";
 import { renderSettings } from "./views/Settings/settings.js";
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcsFile } from "./calendarExport.js";
 import { getCurrentAppUser, logoutAppUser } from "./auth.js";
+import { canManageEvents as canManageEventsPermission, canViewFinance as canViewFinancePermission } from "./authPermissions.js";
 
 // Internal styles
 import "./styles.css";
 import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
 import {
-  getBrandColor,
   getBrandDbValue,
   getBrandLabel,
   getBrandFullLabel,
@@ -146,8 +146,11 @@ export function renderAppShell(root, session) {
 async function render() {
   brandVisualSettingsById = await fetchBrandVisualSettings();
   filters.brand = globalBrandFilter || '';
-  const canManageEvents = ['Dashboard', 'Calendar'].includes(activePage);
-  const canExportFinance = activePage === 'Finance';
+  const currentUser = getCurrentAppUser();
+  const userCanManageEvents = canManageEventsPermission(currentUser);
+  const userCanViewFinance = canViewFinancePermission(currentUser);
+  const canManageEvents = ['Dashboard', 'Calendar'].includes(activePage) && userCanManageEvents;
+  const canExportFinance = activePage === 'Finance' && userCanViewFinance;
   const shellBrandKey = resolveShellBrandKey();
   const shellBrandVisual = getBrandVisualSettings(shellBrandKey);
   const shellThemeVars = getShellCssVars(shellBrandKey, shellBrandVisual);
@@ -168,7 +171,6 @@ async function render() {
     <option value="Fund" ${globalBrandFilter === "Fund" ? "selected" : ""}>${esc(fundNavLabel)}</option>
   `;
   const pageTitle = getActivePageTitle();
-  const currentUser = getCurrentAppUser();
   const isSuperadmin = String(currentUser?.role || "").trim().toLowerCase() === "superadmin";
 
   rootEl.innerHTML = `
@@ -214,7 +216,7 @@ async function render() {
               <button class="btn-ghost sidebar-toggle" id="sidebar-toggle">☰</button>
               <img src="${esc(shellIcon)}" alt="Archer" class="header-brand-icon" onerror="this.style.display='none'">
               <h1>${esc(pageTitle)}</h1>
-              <span class="header-brand-chip" title="${esc(shellBrandDisplay)}" aria-label="${esc(shellBrandDisplay)}">
+              <span class="header-brand-chip" aria-label="${esc(shellBrandDisplay)}">
                 <img src="${esc(shellBrandLogo)}" alt="${esc(shellBrandDisplay)}" class="header-brand-chip-logo" onerror="this.style.display='none'">
               </span>
             </div>
@@ -365,6 +367,10 @@ async function loadContent() {
     if (activePage === 'Admin') {
       await renderSettings(container);
     } else if (activePage === 'Finance') {
+      if (!canViewFinancePermission(getCurrentAppUser())) {
+        container.innerHTML = `<div class="card error-card"><p>⚠ Geen toegang tot financiën.</p></div>`;
+        return;
+      }
       await renderFinanceOverview(container);
     } else if (activePage === 'Calendar') {
       const events = await eventsApi.list({ ...activeFilters, view: 'upcoming' });
@@ -480,17 +486,17 @@ function renderUpcomingTimeline(events = []) {
         ${events
           .slice(0, 8)
           .map((event) => {
-            const brandColor = getBrandColor(event.brand);
+            const brandTheme = getBrandUiTheme(event.brand);
             const brandLabel = getBrandLabel(event.brand);
             return `
-              <button class="timeline-item" data-event-id="${event.id}" style="--timeline-brand:${esc(brandColor)};">
+              <button class="timeline-item" data-event-id="${event.id}" style="--timeline-brand:${esc(brandTheme.primary)};">
                 <div class="timeline-item-main">
                   <strong>${esc(event.title || 'Event')}</strong>
                   <span class="muted">${esc(formatDateTime(event.start_at || event.event_date))}</span>
                 </div>
                 <div class="timeline-item-meta">
                   <span class="badge ${getEventStatusBadgeClass(event.status)}">${esc(getEventStatusLabel(event.status))}</span>
-                  <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
+                  <span class="badge badge-brand event-brand-badge" style="background:${brandTheme.accent};color:${brandTheme.primary};">${esc(brandLabel)}</span>
                   <span class="muted">${esc(event.location || 'Locatie volgt')}</span>
                 </div>
               </button>
@@ -889,15 +895,14 @@ function renderEventList(container, events) {
 
   events.forEach(ev => {
     const el = document.createElement('div');
-    const categoryLabel = inferEventCategory(ev);
     const eventStartStamp = new Date(ev.start_at || ev.event_date || '').getTime();
     const isPastEvent = Number.isFinite(eventStartStamp) && eventStartStamp < new Date(new Date().setHours(0, 0, 0, 0)).getTime();
     el.className = `card event-card ${isPastEvent ? 'event-card-past' : ''}`;
-    const brandColor = getBrandColor(ev.brand);
+    const brandTheme = getBrandUiTheme(ev.brand);
     const brandLabel = getBrandLabel(ev.brand);
     const statusLabel = getEventStatusLabel(ev.status);
     const statusClass = getEventStatusBadgeClass(ev.status);
-    el.style.borderTop = `4px solid ${brandColor}`;
+    el.style.borderTop = `4px solid ${brandTheme.primary}`;
 
     el.innerHTML = `
       <div class="event-card-title">${esc(ev.title)}</div>
@@ -907,13 +912,8 @@ function renderEventList(container, events) {
       </div>
       <div class="event-card-meta">📍 ${esc(ev.location || 'Nog te bepalen')}</div>
       <div class="event-card-footer">
-        <div class="event-card-badges">
-          <span class="badge ${statusClass}">${esc(statusLabel)}</span>
-          <span class="badge badge-category">${esc(categoryLabel)}</span>
-          <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
-          ${isPastEvent ? '<span class="badge badge-past">Afgelopen</span>' : ''}
-        </div>
-        ${ev.expected_attendance ? `<span class="muted" style="font-size:0.8rem;">👥 ${ev.expected_attendance} verwacht</span>` : ''}
+        <span class="badge ${statusClass}">${esc(statusLabel)}</span>
+        <span class="badge badge-brand event-brand-badge" style="background:${brandTheme.accent};color:${brandTheme.primary};">${esc(brandLabel)}</span>
       </div>`;
 
     el.onclick = () => openModal(ev);
@@ -927,6 +927,8 @@ function renderEventList(container, events) {
 // ─── MODAL ───────────────────────────────────────────────────
 async function openModal(event) {
   const isEdit = !!event;
+  const modalUser = getCurrentAppUser();
+  const canEditEvent = canManageEventsPermission(modalUser);
   const initialBrand = event?.brand || globalBrandFilter || getBrandDbValue(store.brandId || "Academy");
   const selectedBrandValue = getBrandDbValue(initialBrand);
   const initialBrandKey = resolveBrandKey(initialBrand);
@@ -1011,13 +1013,7 @@ async function openModal(event) {
             <div><label>Startdatum & -tijd</label><input type="datetime-local" id="m-start" value="${(event?.start_at || '').slice(0, 16)}"></div>
             <div><label>Einddatum & -tijd</label><input type="datetime-local" id="m-end" value="${(event?.end_at || '').slice(0, 16)}"></div>
           </div>
-          <div class="grid-2" style="margin-top:16px;">
-            <div id="m-loc-preset-container"><label id="l-loc-preset">Locatie presets</label><select id="m-loc-preset"></select></div>
-            <div><label>Tijdzone</label><select id="m-tz">
-              <option value="Europe/Brussels" ${(event?.timezone || 'Europe/Brussels') === 'Europe/Brussels' ? 'selected' : ''}>Europe/Brussels</option>
-              <option value="UTC" ${event?.timezone === 'UTC' ? 'selected' : ''}>UTC</option>
-            </select></div>
-          </div>
+          <div style="margin-top:16px;" id="m-loc-preset-container"><label id="l-loc-preset">Locatie presets</label><select id="m-loc-preset"></select></div>
           <div class="grid-2" style="margin-top:16px;" id="m-loc-container">
             <div><label>Locatie naam</label><input id="m-loc" value="${esc(event?.location || '')}"></div>
             <div><label>Link naar locatie</label><input id="m-loc-url" value="${esc(event?.location_url || '')}"></div>
@@ -1030,6 +1026,7 @@ async function openModal(event) {
             <div><label>Catering</label><select id="m-catering"></select></div>
             <div><label>Cateringkost</label><input id="m-catering-estimate" type="text" value="-" readonly></div>
           </div>
+          <p class="muted event-catering-hint">Cateringkost wordt automatisch berekend op basis van de gekozen opties.</p>
           <div style="margin-top:16px;">
             <label>Budget</label>
             <div style="position:relative;">
@@ -1063,9 +1060,9 @@ async function openModal(event) {
       </div>
 
       <div class="modal-footer">
-        ${isEdit ? `<button id="m-delete" class="btn-ghost" style="color:var(--danger);margin-right:auto;">🗑 Verwijder</button>` : ''}
+        ${isEdit && canEditEvent ? `<button id="m-delete" class="btn-ghost" style="color:var(--danger);margin-right:auto;">🗑 Verwijder</button>` : ''}
         <button id="m-cancel" class="btn-secondary">Annuleren</button>
-        <button id="m-save" class="btn-primary">Opslaan</button>
+        ${canEditEvent ? '<button id="m-save" class="btn-primary">Opslaan</button>' : ''}
       </div>
     </div>`;
 
@@ -1084,7 +1081,6 @@ async function openModal(event) {
   const locationPresetEl = overlay.querySelector('#m-loc-preset');
   const locationEl = overlay.querySelector('#m-loc');
   const locationUrlEl = overlay.querySelector('#m-loc-url');
-  const timezoneEl = overlay.querySelector('#m-tz');
   const capacityEl = overlay.querySelector('#m-cap');
   const expectedEl = overlay.querySelector('#m-exp');
   const cateringEl = overlay.querySelector('#m-catering');
@@ -1103,6 +1099,8 @@ async function openModal(event) {
   let modalSettingsRows = settingsRows || [];
   let activeLocationPresets = [];
   let activeCateringOptions = [];
+  const initialCateringValue = String(event?.catering || '').trim();
+  let hasCateringSelectionChanged = false;
 
   const syncModalTheme = () => {
     const brandKey = resolveBrandKey(brandEl.value);
@@ -1173,22 +1171,32 @@ async function openModal(event) {
     }
   };
 
+  let selectedCateringQuantity = 0;
+
+  const getEffectiveCateringQuantity = () => {
+    const expected = Number.parseInt(expectedEl.value || '0', 10);
+    if (Number.isFinite(expected) && expected > 0) return expected;
+    const capacity = Number.parseInt(capacityEl.value || '0', 10);
+    if (Number.isFinite(capacity) && capacity > 0) return capacity;
+    return 1;
+  };
+
   const syncCateringEstimate = () => {
     const selectedName = cateringEl.value;
     const selectedOption = activeCateringOptions.find((entry) => String(entry.name || '') === selectedName);
     const priceAmount = getCateringPriceAmount(selectedOption);
     const currency = getCateringCurrency(selectedOption);
-    const expected = Number.parseInt(expectedEl.value || '0', 10);
-    const capacity = Number.parseInt(capacityEl.value || '0', 10);
-    const attendeeCount = Number.isFinite(expected) && expected > 0 ? expected : (Number.isFinite(capacity) ? Math.max(capacity, 0) : 0);
+    const quantity = getEffectiveCateringQuantity();
 
-    if (!selectedOption || priceAmount === null || attendeeCount <= 0) {
+    if (!selectedOption || priceAmount === null) {
+      selectedCateringQuantity = 0;
       cateringEstimateEl.value = '-';
       return;
     }
 
-    const estimate = attendeeCount * priceAmount;
-    cateringEstimateEl.value = `${formatCurrencyValue(estimate, currency)} (${attendeeCount} gasten)`;
+    const estimate = quantity * priceAmount;
+    selectedCateringQuantity = quantity;
+    cateringEstimateEl.value = `${formatCurrencyValue(estimate, currency)} (${quantity} x ${formatCurrencyValue(priceAmount, currency)})`;
   };
 
   const rebuildCateringOptions = () => {
@@ -1202,7 +1210,7 @@ async function openModal(event) {
       })
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'nl'));
 
-    const currentValue = String(cateringEl.value || event?.catering || '').trim();
+    const currentValue = String(cateringEl.value || initialCateringValue || '').trim();
     const hasCurrentValue = currentValue && activeCateringOptions.some((row) => String(row?.name || '') === currentValue);
 
     cateringEl.innerHTML = `
@@ -1222,11 +1230,48 @@ async function openModal(event) {
     syncCateringEstimate();
   };
 
+  const syncEventCateringSelection = async (eventId) => {
+    if (!eventId) return;
+
+    const selectedName = String(cateringEl.value || '').trim();
+    const selectedOption = activeCateringOptions.find((entry) => String(entry?.name || '') === selectedName);
+    const existingLines = await listEventCatering(eventId).catch(() => []);
+
+    if (!selectedOption || !selectedOption.id) {
+      if (isEdit && existingLines.length && !hasCateringSelectionChanged) return;
+      await Promise.all(
+        existingLines
+          .filter((line) => line?.id)
+          .map((line) => deleteEventCatering(line.id).catch(() => null))
+      );
+      return;
+    }
+
+    const quantity = Math.max(1, selectedCateringQuantity || getEffectiveCateringQuantity());
+    const unitPrice = getCateringPriceAmount(selectedOption);
+    const matchingLine = existingLines.find((line) => String(line.catering_item_id || '') === String(selectedOption.id));
+    const obsoleteLines = existingLines.filter((line) => String(line.catering_item_id || '') !== String(selectedOption.id));
+
+    await Promise.all(
+      obsoleteLines
+        .filter((line) => line?.id)
+        .map((line) => deleteEventCatering(line.id).catch(() => null))
+    );
+
+    await saveEventCateringLine({
+      id: matchingLine?.id || null,
+      event_id: eventId,
+      catering_item_id: selectedOption.id,
+      quantity,
+      unit_price_override: unitPrice ?? null,
+      notes: 'Automatisch uit eventformulier',
+    });
+  };
+
   const syncLocationUi = () => {
     if (locationTypeEl.value === 'online') {
       locationUrlEl.placeholder = 'https://zoom.us/j/...';
       if (!locationEl.value.trim()) locationEl.value = 'Online meeting';
-      if (timezoneEl.value === 'UTC') timezoneEl.value = 'Europe/Brussels';
     } else if (locationTypeEl.value === 'physical') {
       locationUrlEl.placeholder = 'https://maps.google.com/...';
     } else {
@@ -1279,6 +1324,7 @@ async function openModal(event) {
   };
 
   cateringEl.onchange = () => {
+    hasCateringSelectionChanged = true;
     syncCateringEstimate();
   };
   capacityEl.oninput = syncCateringEstimate;
@@ -1345,7 +1391,7 @@ async function openModal(event) {
     if (t.dataset.tab === 'attachments') renderAttachmentsTab(view, event.id);
   });
 
-  overlay.querySelector('#m-save').onclick = async () => {
+  overlay.querySelector('#m-save')?.addEventListener('click', async () => {
     const budgetValueRaw = overlay.querySelector('#m-budget').value;
     const parsedBudget = Number.parseFloat(budgetValueRaw);
     const payload = {
@@ -1358,9 +1404,8 @@ async function openModal(event) {
       capacity: parseInt(overlay.querySelector('#m-cap').value) || 0,
       expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
       catering: overlay.querySelector('#m-catering').value || null,
-      timezone: overlay.querySelector('#m-tz').value,
       budget: Number.isFinite(parsedBudget) ? parsedBudget : null,
-      description: event?.description || '', // Keep description as is since we removed the field but might still want to preserve it or just pass empty
+      description: event?.description || '',
       notes_internal: overlay.querySelector('#m-notes').value,
     };
     if (!payload.title) {
@@ -1380,21 +1425,25 @@ async function openModal(event) {
       return;
     }
     try {
+      let savedEventId = event?.id || null;
       if (isEdit) {
         await updateEvent(event.id, payload);
         showToast('Event bijgewerkt.', 'success');
       } else {
-        await createEvent(payload);
+        const created = await createEvent(payload);
+        savedEventId = created?.id || null;
         showToast('Event aangemaakt.', 'success');
       }
+
+      await syncEventCateringSelection(savedEventId || event?.id);
       close();
     } catch (e) {
       showToast(e.message || 'Opslaan mislukt.', 'error');
     }
-  };
+  });
 
-  if (isEdit) {
-    overlay.querySelector('#m-delete').onclick = async () => {
+  if (isEdit && canEditEvent) {
+    overlay.querySelector('#m-delete')?.addEventListener('click', async () => {
       if (confirm('Dit event definitief verwijderen?')) {
         await runUiAction(async () => {
           await deleteEvent(event.id);
@@ -1402,7 +1451,7 @@ async function openModal(event) {
           close();
         }, 'Verwijderen mislukt.');
       }
-    };
+    });
   }
 }
 
@@ -1488,6 +1537,9 @@ async function fetchCateringOptionRows() {
       id: item.id,
       name: item.name,
       brand: item.brand_key,
+      category: item.category || 'Overig',
+      unit: item.unit || 'per persoon',
+      vat_rate: item.vat_rate ?? 6,
       is_active: item.is_active,
       price_amount: item.unit_price,
       price_currency: 'EUR',
@@ -1687,6 +1739,13 @@ function getSelectedShellTheme() {
   return BRAND_SELECTOR_THEMES.all;
 }
 
+function getBrandUiTheme(rawBrand) {
+  const brand = normalizeBrandForSettings(rawBrand);
+  if (brand === 'invest') return BRAND_SELECTOR_THEMES.invest;
+  if (brand === 'fund') return BRAND_SELECTOR_THEMES.fund;
+  return BRAND_SELECTOR_THEMES.academy;
+}
+
 function getShellCssVars(rawBrand, visualSettings = getBrandVisualSettings(rawBrand)) {
   const baseVars = getBrandCssVars(rawBrand, visualSettings);
   const shellTheme = getSelectedShellTheme();
@@ -1783,7 +1842,6 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   const headerChip = rootEl.querySelector('.header-brand-chip');
   if (headerChip) {
     const brandLabel = getGlobalBrandFilterLabel();
-    headerChip.title = brandLabel;
     headerChip.setAttribute('aria-label', brandLabel);
   }
 

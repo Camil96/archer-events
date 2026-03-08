@@ -20,8 +20,8 @@ function normalizeBrandAccess(value) {
 
 function normalizeRole(value) {
   const role = String(value || "viewer").trim().toLowerCase();
-  if (["superadmin", "admin", "operations", "viewer"].includes(role)) return role;
-  if (role === "ops") return "operations";
+  if (["superadmin", "operations", "viewer"].includes(role)) return role;
+  if (["admin", "ops", "finance", "mentor"].includes(role)) return "operations";
   return "viewer";
 }
 
@@ -31,6 +31,15 @@ function normalizeStatus(value) {
   if (status === "actief") return "active";
   if (status === "inactief") return "disabled";
   return "active";
+}
+
+function normalizeUserRow(row = {}) {
+  return {
+    ...row,
+    role: normalizeRole(row.role),
+    brand_access: normalizeBrandAccess(row.brand_access),
+    status: normalizeStatus(row.status),
+  };
 }
 
 export async function listUsers(filters = {}) {
@@ -49,7 +58,7 @@ export async function listUsers(filters = {}) {
 
   const { data, error } = await query;
   if (error) throw mapDatabaseError(error, "Gebruikers laden mislukt.");
-  return data || [];
+  return (data || []).map(normalizeUserRow);
 }
 
 export async function getUserByEmail(email) {
@@ -66,7 +75,7 @@ export async function getUserByEmail(email) {
     throw mapDatabaseError(error, "Gebruiker ophalen mislukt.");
   }
 
-  return data || null;
+  return data ? normalizeUserRow(data) : null;
 }
 
 export async function getUserById(id) {
@@ -78,7 +87,7 @@ export async function getUserById(id) {
     throw mapDatabaseError(error, "Gebruiker ophalen mislukt.");
   }
 
-  return data || null;
+  return data ? normalizeUserRow(data) : null;
 }
 
 export async function getUserByInviteToken(token) {
@@ -95,7 +104,7 @@ export async function getUserByInviteToken(token) {
     throw mapDatabaseError(error, "Nodiging ophalen mislukt.");
   }
 
-  return data || null;
+  return data ? normalizeUserRow(data) : null;
 }
 
 export async function createUser(payload = {}) {
@@ -114,7 +123,7 @@ export async function createUser(payload = {}) {
 
   const { data, error } = await supabase.from("app_users").insert([row]).select().single();
   if (error) throw mapDatabaseError(error, "Gebruiker aanmaken mislukt.");
-  return data;
+  return normalizeUserRow(data);
 }
 
 export async function updateUser(id, fields = {}) {
@@ -127,7 +136,7 @@ export async function updateUser(id, fields = {}) {
 
   const { data, error } = await supabase.from("app_users").update(payload).eq("id", id).select().single();
   if (error) throw mapDatabaseError(error, "Gebruiker bijwerken mislukt.");
-  return data;
+  return normalizeUserRow(data);
 }
 
 export async function toggleUserStatus(id, nextStatus = "disabled") {

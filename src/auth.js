@@ -9,9 +9,8 @@ let currentUser = null;
 
 function normalizeRole(value) {
   const role = String(value || "").trim().toLowerCase();
-  if (["superadmin", "admin", "operations", "ops", "viewer", "finance", "mentor"].includes(role)) {
-    return role === "ops" ? "operations" : role;
-  }
+  if (["superadmin", "operations", "viewer"].includes(role)) return role;
+  if (["admin", "ops", "finance", "mentor"].includes(role)) return "operations";
   return "viewer";
 }
 

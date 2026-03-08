@@ -526,7 +526,7 @@ h1 {
 
 .event-view-tab.active {
   background: #fff;
-  color: var(--text-heading);
+  color: var(--brand-accent);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
@@ -666,11 +666,10 @@ h1 {
   border-top: 1px solid var(--border-light);
 }
 
-.event-card-badges {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+.event-brand-badge {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0.01em;
 }
 
 .calendar-export-panel {
@@ -967,16 +966,6 @@ textarea:focus-visible {
   letter-spacing: 0.05em;
 }
 
-.badge-category {
-  background: rgba(var(--brand-accent-rgb), 0.12);
-  color: var(--brand-accent-strong);
-}
-
-.badge-past {
-  background: #f1f5f9;
-  color: #475569;
-}
-
 .badge-status-planned {
   background: #e8f0ff;
   color: #1f4ca8;
@@ -1015,6 +1004,11 @@ textarea:focus-visible {
 .badge-gray {
   background: #F1F5F9;
   color: #475569;
+}
+
+.event-catering-hint {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
 }
 
 /* Participant List */

@@ -16,8 +16,8 @@ function createInviteToken(byteLength = 24) {
 
 function normalizeRole(value) {
   const role = String(value || "viewer").trim().toLowerCase();
-  if (["superadmin", "admin", "operations", "viewer"].includes(role)) return role;
-  if (role === "ops") return "operations";
+  if (["superadmin", "operations", "viewer"].includes(role)) return role;
+  if (["admin", "ops", "finance", "mentor"].includes(role)) return "operations";
   return "viewer";
 }
 

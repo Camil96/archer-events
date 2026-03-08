@@ -18,7 +18,7 @@ export function setStoreAuthContext(context = {}) {
 
 function shouldScopeByOwner() {
   if (!authContext.userId) return false;
-  return !["admin", "superadmin"].includes(authContext.role);
+  return authContext.role !== "superadmin";
 }
 
 function addOwnerContext(payload = {}) {
@@ -584,10 +584,8 @@ function normalizeBrandAccess(value) {
 
 function normalizeRole(value) {
   const role = String(value || '').trim().toLowerCase();
-  if (['superadmin', 'admin', 'operations', 'ops', 'viewer', 'finance', 'mentor'].includes(role)) {
-    if (role === 'ops') return 'operations';
-    return role;
-  }
+  if (['superadmin', 'operations', 'viewer'].includes(role)) return role;
+  if (['admin', 'ops', 'finance', 'mentor'].includes(role)) return 'operations';
   return 'viewer';
 }
 

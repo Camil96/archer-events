@@ -1,6 +1,10 @@
 import { esc, showToast } from "../../utils.js";
 
-const ROLE_OPTIONS = ["superadmin", "admin", "operations", "viewer"];
+const ROLE_OPTIONS = [
+  { value: "superadmin", label: "Superadmin" },
+  { value: "operations", label: "Operations" },
+  { value: "viewer", label: "Viewer" },
+];
 const BRAND_OPTIONS = [
   { key: "academy", label: "Academy" },
   { key: "invest", label: "Invest" },
@@ -66,7 +70,7 @@ export function openUserFormModal({
           <label class="cp-field">
             <span>Rol</span>
             <select id="uf-role">
-              ${ROLE_OPTIONS.map((option) => `<option value="${option}" ${role === option ? "selected" : ""}>${option}</option>`).join("")}
+              ${ROLE_OPTIONS.map((option) => `<option value="${option.value}" ${role === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
             </select>
           </label>
 

@@ -54,13 +54,22 @@ function statusBadge(status) {
 }
 
 function roleOptions(selected) {
-  const roles = ["", "superadmin", "admin", "operations", "viewer"];
+  const roles = [
+    { value: "", label: "Alle rollen" },
+    { value: "superadmin", label: "Superadmin" },
+    { value: "operations", label: "Operations" },
+    { value: "viewer", label: "Viewer" },
+  ];
   return roles
-    .map((role) => {
-      const label = role ? role : "Alle rollen";
-      return `<option value="${role}" ${selected === role ? "selected" : ""}>${label}</option>`;
-    })
+    .map((role) => `<option value="${role.value}" ${selected === role.value ? "selected" : ""}>${role.label}</option>`)
     .join("");
+}
+
+function formatRoleLabel(role) {
+  const key = String(role || "").trim().toLowerCase();
+  if (key === "superadmin") return "Superadmin";
+  if (key === "operations") return "Operations";
+  return "Viewer";
 }
 
 function statusOptions(selected) {
@@ -203,7 +212,7 @@ async function renderUserTable(container, currentUser) {
                     return `
                       <tr>
                         <td>${esc(user.email || "-")}</td>
-                        <td>${esc(user.role || "viewer")}</td>
+                        <td>${esc(formatRoleLabel(user.role))}</td>
                         <td>${statusBadge(user.status)}</td>
                         <td>${esc((user.brand_access || []).join(", ") || "-")}</td>
                         <td>${formatDate(user.created_at)}</td>
@@ -430,7 +439,7 @@ export async function renderUserManagement(container, options = {}) {
     container.innerHTML = `
       <div class="cp-card">
         <h3>Geen toegang</h3>
-        <p class="muted">Alleen superadmins en admins kunnen gebruikers beheren.</p>
+        <p class="muted">Alleen superadmins kunnen gebruikers beheren.</p>
       </div>
     `;
     return;
