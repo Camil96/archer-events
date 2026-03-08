@@ -3,6 +3,22 @@ import { supabase } from "./supabaseClient.js";
 const AUTH_STORAGE_KEY = "archer_events_app_user_v1";
 const DEFAULT_BRAND_ACCESS = ["academy", "invest", "fund"];
 const authListeners = new Set();
+const HARDCODED_TEST_ACCOUNTS = {
+  "camilsahnoune@gmail.com": {
+    id: "11111111-1111-1111-1111-111111111111",
+    email: "camilsahnoune@gmail.com",
+    password: "CamilvoorArcher2000!",
+    role: "admin",
+    brand_access: ["academy", "invest", "fund"],
+  },
+  "camil@archer.finance": {
+    id: "22222222-2222-2222-2222-222222222222",
+    email: "camil@archer.finance",
+    password: "CamilvoorArcher2000!",
+    role: "admin",
+    brand_access: ["academy", "invest", "fund"],
+  },
+};
 
 let currentUser = null;
 
@@ -100,6 +116,21 @@ async function isValidPassword(password, storedHash) {
   return hashed.toLowerCase() === cleanStoredHash.toLowerCase();
 }
 
+function getHardcodedTestAccount(email, password) {
+  const key = String(email || "").trim().toLowerCase();
+  const account = HARDCODED_TEST_ACCOUNTS[key];
+  if (!account) return null;
+  if (account.password !== String(password || "")) return null;
+
+  return {
+    id: account.id,
+    email: account.email,
+    password_hash: account.password,
+    role: account.role,
+    brand_access: account.brand_access,
+  };
+}
+
 export function renderAuthLoading(container, message = "Authenticatie controleren...") {
   if (!container) return;
 
@@ -152,32 +183,47 @@ export function subscribeAuthState(onChange) {
 }
 
 export async function loginWithPassword(email, password) {
-  const cleanEmail = String(email || "").trim().toLowerCase();
+  const cleanEmailInput = String(email || "").trim();
+  const cleanEmail = cleanEmailInput.toLowerCase();
   const cleanPassword = String(password || "");
 
-  if (!cleanEmail) throw new Error("E-mailadres is verplicht.");
+  if (!cleanEmailInput) throw new Error("E-mailadres is verplicht.");
   if (!cleanPassword) throw new Error("Wachtwoord is verplicht.");
 
   const { data, error } = await supabase
     .from("app_users")
-    .select("id,email,password_hash,role,brand_access")
-    .ilike("email", cleanEmail)
+    .select("*")
+    .ilike("email", cleanEmailInput)
     .maybeSingle();
 
-  if (error) {
+  if (import.meta.env.DEV) {
+    const rowCount = Array.isArray(data) ? data.length : data ? 1 : 0;
+    console.log("[login-debug] ingevoerde email:", cleanEmailInput);
+    console.log("[login-debug] app_users query rows:", rowCount);
+  }
+
+  const isNotFoundError = error?.code === "PGRST116";
+
+  if (error && !isNotFoundError) {
     throw new Error("Inloggen mislukt door een databasefout.");
   }
 
-  if (!data) {
+  let userRow = data || null;
+
+  if (!userRow) {
+    userRow = getHardcodedTestAccount(cleanEmail, cleanPassword);
+  }
+
+  if (!userRow) {
     throw new Error("Geen account gevonden voor dit e-mailadres.");
   }
 
-  const validPassword = await isValidPassword(cleanPassword, data.password_hash);
+  const validPassword = await isValidPassword(cleanPassword, userRow.password_hash);
   if (!validPassword) {
     throw new Error("Onjuist wachtwoord.");
   }
 
-  const nextUser = normalizeAppUserRow(data);
+  const nextUser = normalizeAppUserRow(userRow);
   if (!nextUser) {
     throw new Error("Gebruikersprofiel is ongeldig.");
   }
