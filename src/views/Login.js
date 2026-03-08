@@ -181,7 +181,7 @@ export function renderLoginView(container, options = {}) {
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const email = emailInput?.value?.trim() || "";
+    const email = emailInput?.value?.trim()?.toLowerCase() || "";
     const password = passwordInput?.value || "";
 
     if (!email) {
