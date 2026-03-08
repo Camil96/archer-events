@@ -195,7 +195,7 @@ async function render() {
                   ${globalBrandOptions}
                 </select>
               </label>
-              ${canManageEvents || canExportFinance ? `<button id="export-csv" class="btn-secondary">⬇ Export CSV</button>` : ""}
+              ${canManageEvents || canExportFinance ? `<button id="export-csv" class="btn-secondary">⬇ Exporteer CSV</button>` : ""}
               ${canManageEvents ? `<button id="add-event" class="btn-primary">+ Nieuw event</button>` : ""}
             </div>
           </div>
@@ -332,7 +332,7 @@ async function loadContent() {
       await renderDashboard(container);
     }
   } catch (e) {
-    container.innerHTML = `<div class="card error-card"><p>⚠ Fout bij laden: ${esc(e.message)}</p></div>`;
+    container.innerHTML = `<div class="card error-card"><p>⚠ ${esc(getErrorMessage(e, 'Gegevens laden mislukt.'))}</p></div>`;
   }
 }
 
@@ -1642,7 +1642,7 @@ async function renderParticipantsTab(container, eventRef) {
       <span class="badge badge-green">✓ ${stats.confirmed} Bevestigd</span>
       <span class="badge badge-yellow">✉ ${stats.invited} Uitgenodigd</span>
       <span class="badge badge-red">✗ ${stats.declined} Afgemeld</span>
-      <button id="p-export-btn" class="btn-ghost btn-sm" style="margin-left:auto;">⬇ Export CSV</button>
+      <button id="p-export-btn" class="btn-ghost btn-sm" style="margin-left:auto;">⬇ Exporteer CSV</button>
     </div>
     
     <div class="participant-add-form">
@@ -2243,7 +2243,7 @@ async function renderTasksTab(container, eventId, availableUsers, userMap) {
           </div>
           <div class="task-actions">
             <select class="t-status-sel" style="font-size:0.8rem;padding:4px;">
-              <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>Todo</option>
+              <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>Te doen</option>
               <option value="in_progress" ${t.status === 'in_progress' ? 'selected' : ''}>Bezig</option>
               <option value="done" ${t.status === 'done' ? 'selected' : ''}>Klaar</option>
             </select>
