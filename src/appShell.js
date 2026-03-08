@@ -367,6 +367,31 @@ function formatPercent(value) {
   return `${numeric.toFixed(1)}%`;
 }
 
+function normalizeEventStatus(rawStatus) {
+  const value = String(rawStatus || 'gepland').trim().toLowerCase();
+  if (value === 'confirmed') return 'bevestigd';
+  if (value === 'cancelled') return 'geannuleerd';
+  if (value === 'completed') return 'afgerond';
+  if (['gepland', 'bevestigd', 'afgerond', 'geannuleerd'].includes(value)) return value;
+  return 'gepland';
+}
+
+function getEventStatusLabel(rawStatus) {
+  const status = normalizeEventStatus(rawStatus);
+  if (status === 'bevestigd') return 'Bevestigd';
+  if (status === 'afgerond') return 'Afgerond';
+  if (status === 'geannuleerd') return 'Geannuleerd';
+  return 'Gepland';
+}
+
+function getEventStatusBadgeClass(rawStatus) {
+  const status = normalizeEventStatus(rawStatus);
+  if (status === 'bevestigd') return 'badge-status-confirmed';
+  if (status === 'afgerond') return 'badge-status-done';
+  if (status === 'geannuleerd') return 'badge-status-cancelled';
+  return 'badge-status-planned';
+}
+
 async function renderFinanceOverview(container) {
   const effectiveFilters = {
     ...financeFilters,
@@ -465,7 +490,7 @@ async function renderFinanceOverview(container) {
                       <td><strong>${esc(row.title || '-')}</strong></td>
                       <td>${esc(row.brand || '-')}</td>
                       <td>${esc(formatDate(row.start_at))}</td>
-                      <td>${esc(row.status || 'gepland')}</td>
+                      <td><span class="badge ${getEventStatusBadgeClass(row.status)}">${esc(getEventStatusLabel(row.status))}</span></td>
                       <td>${esc(formatEuro(row.totals?.total_costs || 0))}</td>
                       <td>${esc(formatEuro(row.totals?.total_income || 0))}</td>
                       <td>${esc(formatEuro(row.totals?.net_result || 0))}</td>
@@ -572,6 +597,8 @@ function renderEventList(container, events) {
     el.className = 'card event-card';
     const brandColor = getBrandColor(ev.brand);
     const brandLabel = getBrandLabel(ev.brand);
+    const statusLabel = getEventStatusLabel(ev.status);
+    const statusClass = getEventStatusBadgeClass(ev.status);
     el.style.borderTop = `4px solid ${brandColor}`;
 
     el.innerHTML = `
@@ -582,7 +609,10 @@ function renderEventList(container, events) {
       </div>
       <div class="event-card-meta">📍 ${esc(ev.location || 'Nog te bepalen')}</div>
       <div class="event-card-footer">
-        <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
+        <div class="event-card-badges">
+          <span class="badge ${statusClass}">${esc(statusLabel)}</span>
+          <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
+        </div>
         ${ev.expected_attendance ? `<span class="muted" style="font-size:0.8rem;">👥 ${ev.expected_attendance} verwacht</span>` : ''}
       </div>`;
 
