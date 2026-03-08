@@ -6,6 +6,51 @@ export const store = {
   brandId: "academy",
 };
 
+const authContext = {
+  userId: null,
+  role: "viewer",
+};
+
+export function setStoreAuthContext(context = {}) {
+  authContext.userId = context.userId ? String(context.userId) : null;
+  authContext.role = String(context.role || "viewer").trim().toLowerCase() || "viewer";
+}
+
+function shouldScopeByOwner() {
+  return !!authContext.userId && authContext.role !== "admin";
+}
+
+function addOwnerContext(payload = {}) {
+  const row = { ...payload };
+  if (shouldScopeByOwner() && !row.owner_id) {
+    row.owner_id = authContext.userId;
+  }
+  return row;
+}
+
+function removeOwnerContext(payload = {}) {
+  const row = { ...payload };
+  delete row.owner_id;
+  return row;
+}
+
+function errorHasColumn(error, columnName) {
+  const haystack = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`.toLowerCase();
+  return haystack.includes("column") && haystack.includes(String(columnName || "").toLowerCase());
+}
+
+async function insertSingleRow(table, payload) {
+  const row = addOwnerContext(payload);
+  let { data, error } = await supabase.from(table).insert([row]).select().single();
+
+  if (error && row.owner_id && errorHasColumn(error, "owner_id")) {
+    ({ data, error } = await supabase.from(table).insert([removeOwnerContext(row)]).select().single());
+  }
+
+  if (error) throw error;
+  return data;
+}
+
 function normalizePeriodFilter(period) {
   const value = String(period || "").trim().toLowerCase();
   if (!value) return "";
@@ -137,7 +182,14 @@ async function applyCatalogCorrections(existingRows) {
 
     if (!Object.keys(changes).length) continue;
 
-    const { error } = await supabase.from("events").update(changes).eq("id", row.id);
+    let updateQuery = supabase.from("events").update(changes).eq("id", row.id);
+    if (shouldScopeByOwner()) updateQuery = updateQuery.eq("owner_id", authContext.userId);
+
+    let { error } = await updateQuery;
+    if (error && shouldScopeByOwner() && errorHasColumn(error, "owner_id")) {
+      ({ error } = await supabase.from("events").update(changes).eq("id", row.id));
+    }
+
     if (error) throw error;
     corrected += 1;
   }
@@ -145,33 +197,62 @@ async function applyCatalogCorrections(existingRows) {
   return corrected;
 }
 
-/* ─── EVENTS ─── */
-export async function listEvents(filters = {}) {
+function buildEventsQuery(filters = {}, includeOwnerScope = true) {
   let query = supabase
-    .from('events')
-    .select('*')
-    .is('deleted_at', null)
-    .order('start_at', { ascending: true });
+    .from("events")
+    .select("*")
+    .is("deleted_at", null)
+    .order("start_at", { ascending: true });
+
+  if (includeOwnerScope && shouldScopeByOwner()) {
+    query = query.eq("owner_id", authContext.userId);
+  }
 
   const brandFilterValues = getBrandFilterValues(filters.brand);
   if (brandFilterValues.length === 1) {
-    query = query.eq('brand', brandFilterValues[0]);
+    query = query.eq("brand", brandFilterValues[0]);
   } else if (brandFilterValues.length > 1) {
-    query = query.in('brand', brandFilterValues);
+    query = query.in("brand", brandFilterValues);
   }
 
-  if (filters.search) query = query.ilike('title', `%${filters.search}%`);
+  if (filters.search) {
+    query = query.or(`title.ilike.%${filters.search}%,location.ilike.%${filters.search}%`);
+  }
 
-  // Date range filtering
+  if (filters.status) {
+    query = query.eq("status", String(filters.status).trim().toLowerCase());
+  }
+
   const normalizedPeriod = normalizePeriodFilter(filters.period);
   const bounds = getPeriodBounds(normalizedPeriod);
   if (bounds) {
-    query = query.gte('start_at', bounds.start.toISOString()).lt('start_at', bounds.end.toISOString());
+    query = query.gte("start_at", bounds.start.toISOString()).lt("start_at", bounds.end.toISOString());
   }
 
-  const { data, error } = await query;
+  if (filters.dateFrom) {
+    const parsedFrom = new Date(filters.dateFrom);
+    if (Number.isFinite(parsedFrom.getTime())) {
+      query = query.gte("start_at", parsedFrom.toISOString());
+    }
+  }
+  if (filters.dateTo) {
+    const parsedTo = new Date(filters.dateTo);
+    if (Number.isFinite(parsedTo.getTime())) {
+      query = query.lte("start_at", parsedTo.toISOString());
+    }
+  }
+
+  return query;
+}
+
+/* ─── EVENTS ─── */
+export async function listEvents(filters = {}) {
+  let { data, error } = await buildEventsQuery(filters, true);
+  if (error && shouldScopeByOwner() && errorHasColumn(error, "owner_id")) {
+    ({ data, error } = await buildEventsQuery(filters, false));
+  }
   if (error) throw error;
-  return data.map(e => ({ ...e, start_at: e.start_at || e.event_date }));
+  return (data || []).map((event) => ({ ...event, start_at: event.start_at || event.event_date }));
 }
 
 export async function importEventCatalog2026() {
@@ -182,17 +263,31 @@ export async function importEventCatalog2026() {
     return { inserted: 0, skipped: 0, corrected: 0, invalid: invalidRows };
   }
 
-  const { data: existing, error: fetchError } = await supabase
+  let existingQuery = supabase
     .from("events")
     .select("id,title,start_at,event_date,brand");
+  if (shouldScopeByOwner()) existingQuery = existingQuery.eq("owner_id", authContext.userId);
+  let { data: existing, error: fetchError } = await existingQuery;
+  if (fetchError && shouldScopeByOwner() && errorHasColumn(fetchError, "owner_id")) {
+    ({ data: existing, error: fetchError } = await supabase
+      .from("events")
+      .select("id,title,start_at,event_date,brand"));
+  }
 
   if (fetchError) throw fetchError;
 
   const corrected = await applyCatalogCorrections(existing || []);
 
-  const { data: refreshed, error: refreshError } = await supabase
+  let refreshQuery = supabase
     .from("events")
     .select("title,start_at,event_date,brand");
+  if (shouldScopeByOwner()) refreshQuery = refreshQuery.eq("owner_id", authContext.userId);
+  let { data: refreshed, error: refreshError } = await refreshQuery;
+  if (refreshError && shouldScopeByOwner() && errorHasColumn(refreshError, "owner_id")) {
+    ({ data: refreshed, error: refreshError } = await supabase
+      .from("events")
+      .select("title,start_at,event_date,brand"));
+  }
 
   if (refreshError) throw refreshError;
 
@@ -205,7 +300,11 @@ export async function importEventCatalog2026() {
     return { inserted: 0, skipped: rows.length + invalidRows, corrected, invalid: invalidRows };
   }
 
-  const { error: insertError } = await supabase.from("events").insert(missingRows);
+  const rowsWithOwner = missingRows.map((row) => addOwnerContext(row));
+  let { error: insertError } = await supabase.from("events").insert(rowsWithOwner);
+  if (insertError && rowsWithOwner.some((row) => row.owner_id) && errorHasColumn(insertError, "owner_id")) {
+    ({ error: insertError } = await supabase.from("events").insert(missingRows));
+  }
   if (insertError) throw insertError;
 
   return {
@@ -221,20 +320,34 @@ export async function createEvent(payload) {
   if (payload.start_at) payload.event_date = toEventDateValue(payload.start_at);
   if (!payload.event_date && payload.start_at) payload.event_date = payload.start_at;
 
-  const { data, error } = await supabase.from('events').insert([payload]).select().single();
+  const row = addOwnerContext(payload);
+  let { data, error } = await supabase.from('events').insert([row]).select().single();
+  if (error && row.owner_id && errorHasColumn(error, "owner_id")) {
+    ({ data, error } = await supabase.from("events").insert([removeOwnerContext(row)]).select().single());
+  }
   if (error) throw error;
   return data;
 }
 
 export async function updateEvent(id, payload) {
   if (payload.start_at) payload.event_date = toEventDateValue(payload.start_at) || payload.start_at;
-  const { data, error } = await supabase.from('events').update(payload).eq('id', id).select().single();
+  let query = supabase.from('events').update(payload).eq('id', id);
+  if (shouldScopeByOwner()) query = query.eq("owner_id", authContext.userId);
+  let { data, error } = await query.select().single();
+  if (error && shouldScopeByOwner() && errorHasColumn(error, "owner_id")) {
+    ({ data, error } = await supabase.from("events").update(payload).eq("id", id).select().single());
+  }
   if (error) throw error;
   return data;
 }
 
 export async function deleteEvent(id) {
-  const { error } = await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  let query = supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  if (shouldScopeByOwner()) query = query.eq("owner_id", authContext.userId);
+  let { error } = await query;
+  if (error && shouldScopeByOwner() && errorHasColumn(error, "owner_id")) {
+    ({ error } = await supabase.from("events").update({ deleted_at: new Date().toISOString() }).eq("id", id));
+  }
   if (error) throw error;
 }
 
@@ -251,9 +364,7 @@ export async function listTasks(eventId) {
 }
 
 export async function createTask(payload) {
-  const { data, error } = await supabase.from('tasks').insert([payload]).select().single();
-  if (error) throw error;
-  return data;
+  return insertSingleRow("tasks", payload);
 }
 
 export async function updateTask(id, payload) {
@@ -293,9 +404,7 @@ export async function listSubtasks(taskId) {
 }
 
 export async function createSubtask(payload) {
-  const { data, error } = await supabase.from('subtasks').insert([payload]).select().single();
-  if (error) throw error;
-  return data;
+  return insertSingleRow("subtasks", payload);
 }
 
 export async function updateSubtask(id, payload) {
@@ -317,9 +426,7 @@ export async function listParticipants(eventId) {
 }
 
 export async function addParticipant(payload) {
-  const { data, error } = await supabase.from('event_participants').insert([payload]).select().single();
-  if (error) throw error;
-  return data;
+  return insertSingleRow("event_participants", payload);
 }
 
 export async function updateParticipant(id, payload) {
@@ -341,9 +448,7 @@ export async function listAttachments(eventId) {
 }
 
 export async function addAttachment(payload) {
-  const { data, error } = await supabase.from('attachments').insert([payload]).select().single();
-  if (error) throw error;
-  return data;
+  return insertSingleRow("attachments", payload);
 }
 
 export async function deleteAttachment(id) {
@@ -409,53 +514,36 @@ export async function getDashboardStats(filters = {}) {
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1).toISOString();
   const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  const brandFilterValues = getBrandFilterValues(filters.brand);
-  const applyBrandFilter = (query) => {
-    if (brandFilterValues.length === 1) return query.eq('brand', brandFilterValues[0]);
-    if (brandFilterValues.length > 1) return query.in('brand', brandFilterValues);
-    return query;
-  };
+  const events = await listEvents({ brand: filters.brand || "", search: "", period: "" }).catch(() => []);
+  const eventIds = (events || []).map((event) => event.id).filter(Boolean);
 
-  const eventsCountQuery = applyBrandFilter(
-    supabase.from('events').select('id', { count: 'exact' }).is('deleted_at', null).gte('start_at', startOfYear)
-  );
-  const upcomingCountQuery = applyBrandFilter(
-    supabase.from('events').select('id', { count: 'exact' }).is('deleted_at', null).gte('start_at', now.toISOString()).lte('start_at', in30Days)
-  );
+  const nowStamp = now.getTime();
+  const yearStartStamp = new Date(startOfYear).getTime();
+  const in30DaysStamp = new Date(in30Days).getTime();
 
-  const [eventsRes, upcomingRes] = await Promise.allSettled([eventsCountQuery, upcomingCountQuery]);
+  const totalEvents = (events || []).filter((event) => {
+    const stamp = new Date(event.start_at || "").getTime();
+    return Number.isFinite(stamp) && stamp >= yearStartStamp;
+  }).length;
+  const upcomingEvents = (events || []).filter((event) => {
+    const stamp = new Date(event.start_at || "").getTime();
+    return Number.isFinite(stamp) && stamp >= nowStamp && stamp <= in30DaysStamp;
+  }).length;
 
   let confirmedParticipants = 0;
   let openTasks = 0;
-
-  if (!brandFilterValues.length) {
+  if (eventIds.length) {
     const [participantsRes, tasksRes] = await Promise.allSettled([
-      supabase.from('event_participants').select('id', { count: 'exact' }).eq('status', 'confirmed'),
-      supabase.from('tasks').select('id', { count: 'exact' }).is('deleted_at', null).neq('status', 'done'),
+      supabase.from("event_participants").select("id", { count: "exact" }).eq("status", "confirmed").in("event_id", eventIds),
+      supabase.from("tasks").select("id", { count: "exact" }).is("deleted_at", null).neq("status", "done").in("event_id", eventIds),
     ]);
-    confirmedParticipants = participantsRes.status === 'fulfilled' ? (participantsRes.value.count || 0) : 0;
-    openTasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.count || 0) : 0;
-  } else {
-    const { data: eventRows, error: eventIdsError } = await applyBrandFilter(
-      supabase.from('events').select('id').is('deleted_at', null)
-    );
-
-    if (!eventIdsError) {
-      const eventIds = (eventRows || []).map((row) => row.id).filter(Boolean);
-      if (eventIds.length) {
-        const [participantsRes, tasksRes] = await Promise.allSettled([
-          supabase.from('event_participants').select('id', { count: 'exact' }).eq('status', 'confirmed').in('event_id', eventIds),
-          supabase.from('tasks').select('id', { count: 'exact' }).is('deleted_at', null).neq('status', 'done').in('event_id', eventIds),
-        ]);
-        confirmedParticipants = participantsRes.status === 'fulfilled' ? (participantsRes.value.count || 0) : 0;
-        openTasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.count || 0) : 0;
-      }
-    }
+    confirmedParticipants = participantsRes.status === "fulfilled" ? (participantsRes.value.count || 0) : 0;
+    openTasks = tasksRes.status === "fulfilled" ? (tasksRes.value.count || 0) : 0;
   }
 
   return {
-    totalEvents: eventsRes.status === 'fulfilled' ? (eventsRes.value.count || 0) : 0,
-    upcomingEvents: upcomingRes.status === 'fulfilled' ? (upcomingRes.value.count || 0) : 0,
+    totalEvents,
+    upcomingEvents,
     confirmedParticipants,
     openTasks,
   };
@@ -1021,7 +1109,7 @@ export async function listEventCatering(eventId) {
 }
 
 export async function saveEventCateringLine(payload) {
-  const rowPayload = {
+  const basePayload = {
     event_id: payload.event_id,
     catering_item_id: payload.catering_item_id || null,
     quantity: Math.max(1, Math.round(toFiniteNumber(payload.quantity, 1))),
@@ -1032,17 +1120,26 @@ export async function saveEventCateringLine(payload) {
     notes: payload.notes || null,
   };
 
-  if (!rowPayload.event_id) throw new Error('event_id is verplicht.');
-  if (!rowPayload.catering_item_id) throw new Error('catering_item_id is verplicht.');
+  if (!basePayload.event_id) throw new Error('event_id is verplicht.');
+  if (!basePayload.catering_item_id) throw new Error('catering_item_id is verplicht.');
 
   if (payload.id) {
-    const { data, error } = await supabase.from('event_catering').update(rowPayload).eq('id', payload.id).select().single();
+    let updateQuery = supabase.from("event_catering").update(basePayload).eq("id", payload.id);
+    if (shouldScopeByOwner()) updateQuery = updateQuery.eq("owner_id", authContext.userId);
+    let { data, error } = await updateQuery.select().single();
+    if (error && shouldScopeByOwner() && errorHasColumn(error, "owner_id")) {
+      ({ data, error } = await supabase.from("event_catering").update(basePayload).eq("id", payload.id).select().single());
+    }
     if (error) throw error;
     const rows = await listEventCatering(data.event_id);
     return rows.find((row) => row.id === data.id) || null;
   }
 
-  const { data, error } = await supabase.from('event_catering').insert(rowPayload).select().single();
+  const rowPayload = addOwnerContext(basePayload);
+  let { data, error } = await supabase.from("event_catering").insert(rowPayload).select().single();
+  if (error && rowPayload.owner_id && errorHasColumn(error, "owner_id")) {
+    ({ data, error } = await supabase.from("event_catering").insert(removeOwnerContext(rowPayload)).select().single());
+  }
   if (error) throw error;
   const rows = await listEventCatering(data.event_id);
   return rows.find((row) => row.id === data.id) || null;
@@ -1078,7 +1175,7 @@ export async function getEventBudget(eventId, options = {}) {
 }
 
 export async function saveEventBudget(eventId, payload) {
-  const rowPayload = {
+  const basePayload = {
     event_id: eventId,
     location_cost: toFiniteNumber(payload.location_cost, 0),
     speaker_costs: JSON.stringify(normalizeBudgetRows(payload.speaker_costs)),
@@ -1094,7 +1191,15 @@ export async function saveEventBudget(eventId, payload) {
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabase.from('event_budget').upsert(rowPayload, { onConflict: 'event_id' }).select().single();
+  const rowPayload = addOwnerContext(basePayload);
+  let { data, error } = await supabase.from("event_budget").upsert(rowPayload, { onConflict: "event_id" }).select().single();
+  if (error && rowPayload.owner_id && errorHasColumn(error, "owner_id")) {
+    ({ data, error } = await supabase
+      .from("event_budget")
+      .upsert(removeOwnerContext(rowPayload), { onConflict: "event_id" })
+      .select()
+      .single());
+  }
   if (error) throw error;
   return data;
 }

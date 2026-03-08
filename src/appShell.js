@@ -16,6 +16,7 @@ import {
   getFinanceOverview,
   buildFinanceCsvRows,
   buildParticipantsCsvRows,
+  setStoreAuthContext,
   store
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
@@ -91,6 +92,10 @@ async function runUiAction(action, fallbackMessage = 'Actie mislukt.') {
 // ─── APP SHELL ───────────────────────────────────────────────
 export function renderAppShell(root, session) {
   rootEl = root;
+  setStoreAuthContext({
+    userId: session?.user?.id || null,
+    role: session?.user?.user_metadata?.role || "viewer",
+  });
   render().catch((error) => {
     console.error("App shell render failed:", error);
     if (rootEl) {

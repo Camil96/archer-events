@@ -5,6 +5,7 @@ import {
   sendMagicLink,
   subscribeToAuthState,
 } from "./auth.js";
+import { setStoreAuthContext } from "./store.js";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -25,12 +26,17 @@ function showFatalError(message) {
 
 function renderLoginIfNeeded() {
   if (!root || currentRender === "login") return;
+  setStoreAuthContext({ userId: null, role: "viewer" });
   currentRender = "login";
   renderLogin(root);
 }
 
 function renderAppIfNeeded(session) {
   if (!root || !session?.user) return;
+  setStoreAuthContext({
+    userId: session.user.id,
+    role: session?.user?.user_metadata?.role || "viewer",
+  });
   currentRender = "app";
   renderAppShell(root, session);
 }
