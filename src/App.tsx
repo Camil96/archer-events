@@ -1,3 +1,6 @@
+// Legacy React app shell.
+// De actieve runtime van Archer Events is momenteel:
+// `index.html -> src/main.js -> src/appShell.js`.
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';

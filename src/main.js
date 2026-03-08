@@ -192,10 +192,16 @@ function renderLogin(container) {
     btn.disabled = true;
     btn.textContent = 'Bezig...';
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: getAuthRedirectUrl() },
-    });
+    let error = null;
+    try {
+      const result = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: getAuthRedirectUrl() },
+      });
+      error = result.error;
+    } catch (submitError) {
+      error = submitError;
+    }
 
     if (error) {
       btn.disabled = false;

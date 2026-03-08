@@ -2,12 +2,10 @@ import { supabase } from "./supabaseClient.js";
 import {
   listEvents, createEvent, updateEvent, deleteEvent,
   listTasks, createTask, updateTask, deleteTask,
-  listSubtasks, createSubtask, updateSubtask, deleteSubtask,
+  createSubtask, updateSubtask, deleteSubtask,
   listParticipants, addParticipant, updateParticipant, deleteParticipant,
   listAttachments, addAttachment, deleteAttachment,
-  listBrands, createBrand, updateBrand,
-  listAvailableUsers, listAuditLog, getDashboardStats,
-  assignTask, unassignTask,
+  listAvailableUsers, getDashboardStats,
   importEventCatalog2026,
   listCateringItems,
   listEventCatering,
@@ -25,7 +23,7 @@ import { renderSettings } from "./views/settings.js";
 
 // Internal styles
 import "./styles.css";
-import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
+import { esc, formatDate, downloadCSV, showToast } from "./utils.js";
 import {
   getBrandColor,
   getBrandDbValue,
@@ -73,6 +71,22 @@ const DEFAULT_ONLINE_LOCATION_PRESETS = [
   { label: 'Google Meet', location: 'Online - Google Meet', url: 'https://meet.google.com/' },
   { label: 'Webex', location: 'Online - Webex', url: 'https://webex.com/meet/' }
 ];
+
+function getErrorMessage(error, fallback = 'Er ging iets mis.') {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error.trim() || fallback;
+  return String(error.message || error.details || fallback);
+}
+
+async function runUiAction(action, fallbackMessage = 'Actie mislukt.') {
+  try {
+    return await action();
+  } catch (error) {
+    console.error(error);
+    showToast(getErrorMessage(error, fallbackMessage), 'error');
+    return null;
+  }
+}
 
 // ─── APP SHELL ───────────────────────────────────────────────
 export function renderAppShell(root, session) {
@@ -225,8 +239,11 @@ async function render() {
 
   // Logout
   rootEl.querySelector('#logout').onclick = async () => {
-    await supabase.auth.signOut();
-    window.location.reload();
+    await runUiAction(async () => {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      window.location.reload();
+    }, 'Uitloggen mislukt.');
   };
 
   // Sidebar toggle
@@ -257,18 +274,20 @@ async function render() {
   // Export CSV
   const exportBtn = rootEl.querySelector('#export-csv');
   if (exportBtn) exportBtn.onclick = async () => {
-    if (activePage === 'Finance') {
-      const result = await getFinanceOverview({
-        ...financeFilters,
-        brand: financeFilters.brand || globalBrandFilter || '',
-      });
-      const rows = buildFinanceCsvRows(result.rows || []);
-      downloadCSV(rows, `financien-${new Date().toISOString().slice(0, 10)}.csv`);
-      return;
-    }
+    await runUiAction(async () => {
+      if (activePage === 'Finance') {
+        const result = await getFinanceOverview({
+          ...financeFilters,
+          brand: financeFilters.brand || globalBrandFilter || '',
+        });
+        const rows = buildFinanceCsvRows(result.rows || []);
+        downloadCSV(rows, `financien-${new Date().toISOString().slice(0, 10)}.csv`);
+        return;
+      }
 
-    const events = await listEvents(getActiveEventFilters());
-    downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
+      const events = await listEvents(getActiveEventFilters());
+      downloadCSV(events, `events-${activePage}-${new Date().toISOString().slice(0, 10)}.csv`);
+    }, 'Exporteren mislukt.');
   };
 
   const globalBrandFilterEl = rootEl.querySelector('#global-brand-filter');
@@ -486,15 +505,17 @@ async function renderFinanceOverview(container) {
 
   container.querySelectorAll('.finance-row-open').forEach((rowEl) => {
     rowEl.addEventListener('click', async () => {
-      const eventId = rowEl.dataset.eventId;
-      if (!eventId) return;
-      const allEvents = await listEvents({ brand: '', period: '', search: '' });
-      const selectedEvent = allEvents.find((event) => String(event.id) === String(eventId));
-      if (!selectedEvent) {
-        showToast('Event niet gevonden.', 'error');
-        return;
-      }
-      openModal(selectedEvent);
+      await runUiAction(async () => {
+        const eventId = rowEl.dataset.eventId;
+        if (!eventId) return;
+        const allEvents = await listEvents({ brand: '', period: '', search: '' });
+        const selectedEvent = allEvents.find((event) => String(event.id) === String(eventId));
+        if (!selectedEvent) {
+          showToast('Event niet gevonden.', 'error');
+          return;
+        }
+        openModal(selectedEvent);
+      }, 'Eventdetail laden mislukt.');
     });
   });
 }
@@ -935,6 +956,8 @@ async function openModal(event) {
   });
 
   overlay.querySelector('#m-save').onclick = async () => {
+    const budgetValueRaw = overlay.querySelector('#m-budget').value;
+    const parsedBudget = Number.parseFloat(budgetValueRaw);
     const payload = {
       title: overlay.querySelector('#m-title').value.trim(),
       brand: overlay.querySelector('#m-brand').value,
@@ -946,6 +969,7 @@ async function openModal(event) {
       expected_attendance: parseInt(overlay.querySelector('#m-exp').value) || 0,
       catering: overlay.querySelector('#m-catering').value || null,
       timezone: overlay.querySelector('#m-tz').value,
+      budget: Number.isFinite(parsedBudget) ? parsedBudget : null,
       description: event?.description || '', // Keep description as is since we removed the field but might still want to preserve it or just pass empty
       notes_internal: overlay.querySelector('#m-notes').value,
     };
@@ -977,8 +1001,11 @@ async function openModal(event) {
   if (isEdit) {
     overlay.querySelector('#m-delete').onclick = async () => {
       if (confirm('Dit event definitief verwijderen?')) {
-        await deleteEvent(event.id);
-        close();
+        await runUiAction(async () => {
+          await deleteEvent(event.id);
+          showToast('Event verwijderd.', 'success');
+          close();
+        }, 'Verwijderen mislukt.');
       }
     };
   }
@@ -1416,13 +1443,18 @@ async function renderParticipantsTab(container, eventRef) {
         </div>`;
 
       row.querySelector('.p-status-select').onchange = async (e) => {
-        await updateParticipant(p.id, { status: e.target.value });
-        renderParticipantsTab(container, eventRef);
+        await runUiAction(async () => {
+          await updateParticipant(p.id, { status: e.target.value });
+          renderParticipantsTab(container, eventRef);
+        }, 'Status bijwerken mislukt.');
       };
       row.querySelector('.p-del-btn').onclick = async () => {
         if (confirm('Deelnemer verwijderen?')) {
-          await deleteParticipant(p.id);
-          renderParticipantsTab(container, eventRef);
+          await runUiAction(async () => {
+            await deleteParticipant(p.id);
+            showToast('Deelnemer verwijderd.', 'success');
+            renderParticipantsTab(container, eventRef);
+          }, 'Deelnemer verwijderen mislukt.');
         }
       };
       list.appendChild(row);
@@ -1446,8 +1478,11 @@ async function renderParticipantsTab(container, eventRef) {
       showToast('Naam is verplicht.', 'error');
       return;
     }
-    await addParticipant(payload);
-    renderParticipantsTab(container, eventRef);
+    await runUiAction(async () => {
+      await addParticipant(payload);
+      showToast('Deelnemer toegevoegd.', 'success');
+      renderParticipantsTab(container, eventRef);
+    }, 'Deelnemer toevoegen mislukt.');
   };
 
   container.querySelector('#p-export-btn').onclick = () => {
@@ -1986,29 +2021,44 @@ async function renderTasksTab(container, eventId, availableUsers, userMap) {
         </div>`;
 
       card.querySelector('.t-check').onchange = async (e) => {
-        await updateTask(t.id, { status: e.target.checked ? 'done' : 'todo' });
-        renderList();
+        await runUiAction(async () => {
+          await updateTask(t.id, { status: e.target.checked ? 'done' : 'todo' });
+          renderList();
+        }, 'Taakstatus bijwerken mislukt.');
       };
       card.querySelector('.t-status-sel').onchange = async (e) => {
-        await updateTask(t.id, { status: e.target.value });
-        renderList();
+        await runUiAction(async () => {
+          await updateTask(t.id, { status: e.target.value });
+          renderList();
+        }, 'Taakstatus bijwerken mislukt.');
       };
       card.querySelector('.t-del-btn').onclick = async () => {
-        if (confirm('Taak verwijderen?')) { await deleteTask(t.id); renderList(); }
+        if (!confirm('Taak verwijderen?')) return;
+        await runUiAction(async () => {
+          await deleteTask(t.id);
+          showToast('Taak verwijderd.', 'success');
+          renderList();
+        }, 'Taak verwijderen mislukt.');
       };
       card.querySelectorAll('.st-check').forEach(cb => cb.onchange = async (e) => {
-        await updateSubtask(cb.dataset.id, { is_completed: e.target.checked });
-        renderList();
+        await runUiAction(async () => {
+          await updateSubtask(cb.dataset.id, { is_completed: e.target.checked });
+          renderList();
+        }, 'Subtaak bijwerken mislukt.');
       });
       card.querySelectorAll('.st-del-btn').forEach(btn => btn.onclick = async () => {
-        await deleteSubtask(btn.dataset.id);
-        renderList();
+        await runUiAction(async () => {
+          await deleteSubtask(btn.dataset.id);
+          renderList();
+        }, 'Subtaak verwijderen mislukt.');
       });
       card.querySelector('.st-add-btn').onclick = async () => {
         const val = card.querySelector('.st-input').value.trim();
         if (!val) return;
-        await createSubtask({ task_id: t.id, title: val, is_completed: false });
-        renderList();
+        await runUiAction(async () => {
+          await createSubtask({ task_id: t.id, title: val, is_completed: false });
+          renderList();
+        }, 'Subtaak toevoegen mislukt.');
       };
 
       listArea.appendChild(card);
@@ -2020,16 +2070,19 @@ async function renderTasksTab(container, eventId, availableUsers, userMap) {
   container.querySelector('#tn-add').onclick = async () => {
     const title = container.querySelector('#tn-title').value.trim();
     if (!title) return;
-    await createTask({
-      event_id: eventId,
-      title,
-      due_at: container.querySelector('#tn-due').value || null,
-      priority: container.querySelector('#tn-prio').value,
-      assignee_user_id: container.querySelector('#tn-assign').value || null,
-      status: 'todo'
-    });
-    container.querySelector('#tn-title').value = '';
-    renderList();
+    await runUiAction(async () => {
+      await createTask({
+        event_id: eventId,
+        title,
+        due_at: container.querySelector('#tn-due').value || null,
+        priority: container.querySelector('#tn-prio').value,
+        assignee_user_id: container.querySelector('#tn-assign').value || null,
+        status: 'todo'
+      });
+      showToast('Taak toegevoegd.', 'success');
+      container.querySelector('#tn-title').value = '';
+      renderList();
+    }, 'Taak toevoegen mislukt.');
   };
 }
 
@@ -2064,8 +2117,11 @@ async function renderAttachmentsTab(container, eventId) {
 
   container.querySelectorAll('.a-del-btn').forEach(btn => btn.onclick = async () => {
     if (confirm('Bijlage verwijderen?')) {
-      await deleteAttachment(btn.dataset.id);
-      renderAttachmentsTab(container, eventId);
+      await runUiAction(async () => {
+        await deleteAttachment(btn.dataset.id);
+        showToast('Bijlage verwijderd.', 'success');
+        renderAttachmentsTab(container, eventId);
+      }, 'Bijlage verwijderen mislukt.');
     }
   });
 
@@ -2076,14 +2132,19 @@ async function renderAttachmentsTab(container, eventId) {
       showToast('URL is verplicht.', 'error');
       return;
     }
-    const { data: { user } } = await supabase.auth.getUser();
-    await addAttachment({
-      event_id: eventId,
-      user_id: user?.id,
-      title: title || 'Naamloos',
-      url,
-      file_type: container.querySelector('#an-type').value
-    });
-    renderAttachmentsTab(container, eventId);
+    await runUiAction(async () => {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+
+      await addAttachment({
+        event_id: eventId,
+        user_id: user?.id,
+        title: title || 'Naamloos',
+        url,
+        file_type: container.querySelector('#an-type').value
+      });
+      showToast('Bijlage toegevoegd.', 'success');
+      renderAttachmentsTab(container, eventId);
+    }, 'Bijlage toevoegen mislukt.');
   };
 }
