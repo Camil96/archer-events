@@ -241,7 +241,7 @@ function eventUpsertKey(row = {}) {
   return `${String(row.brand || "").trim().toLowerCase()}|${String(row.title || "").trim().toLowerCase()}|${String(row.start_at || "").trim()}`;
 }
 
-export async function importMentorshipAndOneOnOneEvents2026(supabaseClient) {
+export async function seedArcherAcademyEvents2026(supabaseClient) {
   if (!supabaseClient) throw new Error("Supabase client ontbreekt voor import.");
 
   const rows = buildMentorshipAndOneOnOneRows2026();
@@ -299,6 +299,10 @@ export async function importMentorshipAndOneOnOneEvents2026(supabaseClient) {
     updated: fallbackUpdated,
     mode: "fallback",
   };
+}
+
+export async function importMentorshipAndOneOnOneEvents2026(supabaseClient) {
+  return seedArcherAcademyEvents2026(supabaseClient);
 }
 
 export const eventsApi = {

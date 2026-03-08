@@ -18,7 +18,7 @@ import {
   setStoreAuthContext,
   store
 } from "./store.js";
-import { eventsApi, importMentorshipAndOneOnOneEvents2026 } from "./api/events.js";
+import { eventsApi, inferEventCategory, seedArcherAcademyEvents2026 } from "./api/events.js";
 import { renderCalendar } from "./calendar.js";
 import { renderSettings } from "./views/Settings/settings.js";
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcsFile } from "./calendarExport.js";
@@ -40,6 +40,7 @@ import {
   computeBrandCssVariables,
   cssVarsToInlineStyle,
   normalizeHexColor,
+  hexToRgbString,
 } from "./config.js";
 
 // ─── GLOBAL STATE ───────────────────────────────────────────
@@ -49,6 +50,33 @@ let filters = { brand: '', search: '', period: '', category: '', status: '', dat
 let financeFilters = { brand: '', period: 'year', status: '', search: '' };
 let brandVisualSettingsById = {};
 let globalBrandFilter = getBrandDbValue(store.brandId || "Academy");
+
+const BRAND_SELECTOR_THEMES = {
+  all: {
+    backgroundStart: "#F5F5F7",
+    backgroundEnd: "#ECEFF3",
+    primary: "#2563EB",
+    primaryHover: "#1d4ed8",
+  },
+  academy: {
+    backgroundStart: "#F5F7FF",
+    backgroundEnd: "#EAF0FF",
+    primary: "#2563EB",
+    primaryHover: "#1d4ed8",
+  },
+  invest: {
+    backgroundStart: "#F4FBF7",
+    backgroundEnd: "#E7F7EE",
+    primary: "#15803D",
+    primaryHover: "#166534",
+  },
+  fund: {
+    backgroundStart: "#FFF7F5",
+    backgroundEnd: "#FDEDE8",
+    primary: "#B91C1C",
+    primaryHover: "#991B1B",
+  },
+};
 
 const DEFAULT_EVENT_TITLE_PRESETS = [
   'Performance sessie',
@@ -122,7 +150,7 @@ async function render() {
   const canExportFinance = activePage === 'Finance';
   const shellBrandKey = resolveShellBrandKey();
   const shellBrandVisual = getBrandVisualSettings(shellBrandKey);
-  const shellThemeVars = getBrandCssVars(shellBrandKey, shellBrandVisual);
+  const shellThemeVars = getShellCssVars(shellBrandKey, shellBrandVisual);
   const shellBrandDisplay = getGlobalBrandFilterLabel();
   const shellWordmark = shellBrandVisual.logo_url?.trim() || getBrandLogoWordmark(shellBrandKey);
   const shellIcon = getBrandLogoIcon(shellBrandKey);
@@ -197,7 +225,7 @@ async function render() {
                   ${globalBrandOptions}
                 </select>
               </label>
-              ${activePage === 'Admin' && isSuperadmin ? '<button id="import-mentorship-2026" class="btn-secondary">Importeer Mentorship & 1-op-1 events 2026</button>' : ''}
+              ${activePage === 'Admin' && isSuperadmin ? '<button id="import-mentorship-2026" class="btn-secondary">Archer Academy 2026 events importeren</button>' : ''}
               ${canManageEvents || canExportFinance ? `<button id="export-csv" class="btn-secondary">⬇ Exporteer CSV</button>` : ""}
               ${canManageEvents ? `<button id="add-event" class="btn-primary">+ Nieuw event</button>` : ""}
             </div>
@@ -314,13 +342,13 @@ async function render() {
       import2026Btn.disabled = true;
       import2026Btn.textContent = 'Import bezig...';
       await runUiAction(async () => {
-        const result = await importMentorshipAndOneOnOneEvents2026(supabase);
+        const result = await seedArcherAcademyEvents2026(supabase);
         const inserted = Number(result?.inserted || 0);
         const updated = Number(result?.updated || 0);
         showToast(`Import klaar: ${inserted} toegevoegd, ${updated} bijgewerkt.`, 'success');
       }, 'Importeren van 2026 events mislukt.');
       import2026Btn.disabled = false;
-      import2026Btn.textContent = 'Importeer Mentorship & 1-op-1 events 2026';
+      import2026Btn.textContent = 'Archer Academy 2026 events importeren';
     };
   }
 
@@ -676,49 +704,94 @@ async function renderFinanceOverview(container) {
 }
 
 // ─── FILTERS ─────────────────────────────────────────────────
+function toDateInputValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 10);
+}
+
 function renderFilters(container, initialEvents) {
   const selectedBrand = filters.brand || globalBrandFilter || '';
   const academyLabel = getBrandFilterOptionLabel('archer_academy');
   const investLabel = getBrandFilterOptionLabel('archer_invest');
   const fundLabel = getBrandFilterOptionLabel('archer_fund');
   const activeView = filters.view === 'past' ? 'past' : 'upcoming';
+  const dateFromValue = toDateInputValue(filters.dateFrom);
+  const dateToValue = toDateInputValue(filters.dateTo);
 
   const filterSection = document.createElement('div');
   filterSection.innerHTML = `
-    <div class="event-view-tabs">
-      <button id="f-view-upcoming" class="event-view-tab ${activeView === 'upcoming' ? 'active' : ''}" type="button">Komende events</button>
-      <button id="f-view-past" class="event-view-tab ${activeView === 'past' ? 'active' : ''}" type="button">Voorbije events</button>
-    </div>
-    <div class="filter-bar">
-      <input type="text" id="f-search" placeholder="🔍 Zoek op titel of locatie..." value="${esc(filters.search)}" class="filter-input">
-      <select id="f-brand" class="filter-select">
-        <option value="" ${!selectedBrand ? 'selected' : ''}>Alle merken</option>
-        <option value="Academy" ${selectedBrand === 'Academy' ? 'selected' : ''}>${esc(academyLabel)}</option>
-        <option value="Invest" ${selectedBrand === 'Invest' ? 'selected' : ''}>${esc(investLabel)}</option>
-        <option value="Fund" ${selectedBrand === 'Fund' ? 'selected' : ''}>${esc(fundLabel)}</option>
-      </select>
-      <select id="f-category" class="filter-select">
-        <option value="" ${!filters.category ? 'selected' : ''}>Alle categorieën</option>
-        <option value="Mentorship" ${filters.category === 'Mentorship' ? 'selected' : ''}>Mentorship</option>
-        <option value="1-op-1" ${filters.category === '1-op-1' ? 'selected' : ''}>1-op-1</option>
-        <option value="Academy algemeen" ${filters.category === 'Academy algemeen' ? 'selected' : ''}>Academy algemeen</option>
-      </select>
-      <select id="f-status" class="filter-select">
-        <option value="" ${!filters.status ? 'selected' : ''}>Alle statussen</option>
-        <option value="gepland" ${filters.status === 'gepland' ? 'selected' : ''}>Gepland</option>
-        <option value="bevestigd" ${filters.status === 'bevestigd' ? 'selected' : ''}>Bevestigd</option>
-        <option value="afgerond" ${filters.status === 'afgerond' ? 'selected' : ''}>Afgerond</option>
-        <option value="geannuleerd" ${filters.status === 'geannuleerd' ? 'selected' : ''}>Geannuleerd</option>
-      </select>
-      <select id="f-period" class="filter-select">
-        <option value="">Alles</option>
-        <option value="year_2026" ${filters.period === 'year_2026' ? 'selected' : ''}>Enkel 2026</option>
-        <option value="q1_2026" ${filters.period === 'q1_2026' ? 'selected' : ''}>Q1 2026</option>
-        <option value="q2_2026" ${filters.period === 'q2_2026' ? 'selected' : ''}>Q2 2026</option>
-        <option value="q3_2026" ${filters.period === 'q3_2026' ? 'selected' : ''}>Q3 2026</option>
-        <option value="q4_2026" ${filters.period === 'q4_2026' ? 'selected' : ''}>Q4 2026</option>
-      </select>
-      <button id="f-reset" class="btn-ghost filter-reset-btn" type="button">Alle filters resetten</button>
+    <div class="event-filters-card">
+      <div class="event-view-tabs">
+        <button id="f-view-upcoming" class="event-view-tab ${activeView === 'upcoming' ? 'active' : ''}" type="button">Komende events</button>
+        <button id="f-view-past" class="event-view-tab ${activeView === 'past' ? 'active' : ''}" type="button">Voorbije events</button>
+      </div>
+      <div class="filter-grid">
+        <label class="filter-field filter-field-search">
+          <span class="filter-label">Zoeken</span>
+          <input type="text" id="f-search" placeholder="Zoek op titel of locatie..." value="${esc(filters.search)}" class="filter-input">
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Merk</span>
+          <select id="f-brand" class="filter-select">
+            <option value="" ${!selectedBrand ? 'selected' : ''}>Alle merken</option>
+            <option value="Academy" ${selectedBrand === 'Academy' ? 'selected' : ''}>${esc(academyLabel)}</option>
+            <option value="Invest" ${selectedBrand === 'Invest' ? 'selected' : ''}>${esc(investLabel)}</option>
+            <option value="Fund" ${selectedBrand === 'Fund' ? 'selected' : ''}>${esc(fundLabel)}</option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Categorie</span>
+          <select id="f-category" class="filter-select">
+            <option value="" ${!filters.category ? 'selected' : ''}>Alle categorieën</option>
+            <option value="Mentorship" ${filters.category === 'Mentorship' ? 'selected' : ''}>Mentorship</option>
+            <option value="1-op-1" ${filters.category === '1-op-1' ? 'selected' : ''}>1-op-1</option>
+            <option value="Academy algemeen" ${filters.category === 'Academy algemeen' ? 'selected' : ''}>Academy algemeen</option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Status</span>
+          <select id="f-status" class="filter-select">
+            <option value="" ${!filters.status ? 'selected' : ''}>Alle statussen</option>
+            <option value="gepland" ${filters.status === 'gepland' ? 'selected' : ''}>Gepland</option>
+            <option value="bevestigd" ${filters.status === 'bevestigd' ? 'selected' : ''}>Bevestigd</option>
+            <option value="afgerond" ${filters.status === 'afgerond' ? 'selected' : ''}>Afgerond</option>
+            <option value="geannuleerd" ${filters.status === 'geannuleerd' ? 'selected' : ''}>Geannuleerd</option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Periode</span>
+          <select id="f-period" class="filter-select">
+            <option value="">Alles</option>
+            <option value="year_2026" ${filters.period === 'year_2026' ? 'selected' : ''}>Enkel 2026</option>
+            <option value="q1_2026" ${filters.period === 'q1_2026' ? 'selected' : ''}>Q1 2026</option>
+            <option value="q2_2026" ${filters.period === 'q2_2026' ? 'selected' : ''}>Q2 2026</option>
+            <option value="q3_2026" ${filters.period === 'q3_2026' ? 'selected' : ''}>Q3 2026</option>
+            <option value="q4_2026" ${filters.period === 'q4_2026' ? 'selected' : ''}>Q4 2026</option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Vanaf datum</span>
+          <input type="date" id="f-date-from" value="${esc(dateFromValue)}" class="filter-input">
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Tot datum</span>
+          <input type="date" id="f-date-to" value="${esc(dateToValue)}" class="filter-input">
+        </label>
+      </div>
+
+      <div class="filter-actions">
+        <button id="f-reset" class="btn-ghost filter-reset-btn" type="button">Alle filters resetten</button>
+      </div>
     </div>
     <div id="event-list-area"></div>`;
 
@@ -732,8 +805,8 @@ function renderFilters(container, initialEvents) {
     filters.category = container.querySelector('#f-category')?.value || '';
     filters.status = container.querySelector('#f-status')?.value || '';
     filters.period = container.querySelector('#f-period')?.value || '';
-    filters.dateFrom = '';
-    filters.dateTo = '';
+    filters.dateFrom = container.querySelector('#f-date-from')?.value || '';
+    filters.dateTo = container.querySelector('#f-date-to')?.value || '';
 
     if (globalBrandFilter !== filters.brand) {
       globalBrandFilter = filters.brand;
@@ -758,6 +831,8 @@ function renderFilters(container, initialEvents) {
   container.querySelector('#f-category').onchange = applyFilters;
   container.querySelector('#f-status').onchange = applyFilters;
   container.querySelector('#f-period').onchange = applyFilters;
+  container.querySelector('#f-date-from').onchange = applyFilters;
+  container.querySelector('#f-date-to').onchange = applyFilters;
   container.querySelector('#f-view-upcoming').onclick = async () => {
     filters.view = 'upcoming';
     await applyFilters();
@@ -776,6 +851,8 @@ function renderFilters(container, initialEvents) {
     const categoryEl = container.querySelector('#f-category');
     const statusEl = container.querySelector('#f-status');
     const periodEl = container.querySelector('#f-period');
+    const dateFromEl = container.querySelector('#f-date-from');
+    const dateToEl = container.querySelector('#f-date-to');
     const upcomingTab = container.querySelector('#f-view-upcoming');
     const pastTab = container.querySelector('#f-view-past');
 
@@ -784,6 +861,8 @@ function renderFilters(container, initialEvents) {
     if (categoryEl) categoryEl.value = '';
     if (statusEl) statusEl.value = '';
     if (periodEl) periodEl.value = '';
+    if (dateFromEl) dateFromEl.value = '';
+    if (dateToEl) dateToEl.value = '';
     if (upcomingTab) upcomingTab.classList.add('active');
     if (pastTab) pastTab.classList.remove('active');
 
@@ -810,7 +889,10 @@ function renderEventList(container, events) {
 
   events.forEach(ev => {
     const el = document.createElement('div');
-    el.className = 'card event-card';
+    const categoryLabel = inferEventCategory(ev);
+    const eventStartStamp = new Date(ev.start_at || ev.event_date || '').getTime();
+    const isPastEvent = Number.isFinite(eventStartStamp) && eventStartStamp < new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    el.className = `card event-card ${isPastEvent ? 'event-card-past' : ''}`;
     const brandColor = getBrandColor(ev.brand);
     const brandLabel = getBrandLabel(ev.brand);
     const statusLabel = getEventStatusLabel(ev.status);
@@ -827,7 +909,9 @@ function renderEventList(container, events) {
       <div class="event-card-footer">
         <div class="event-card-badges">
           <span class="badge ${statusClass}">${esc(statusLabel)}</span>
+          <span class="badge badge-category">${esc(categoryLabel)}</span>
           <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
+          ${isPastEvent ? '<span class="badge badge-past">Afgelopen</span>' : ''}
         </div>
         ${ev.expected_attendance ? `<span class="muted" style="font-size:0.8rem;">👥 ${ev.expected_attendance} verwacht</span>` : ''}
       </div>`;
@@ -1595,6 +1679,30 @@ function getBrandCssVars(rawBrand, visualSettings = getBrandVisualSettings(rawBr
   return computeBrandCssVariables(rawBrand, { accentColor });
 }
 
+function getSelectedShellTheme() {
+  const brand = String(globalBrandFilter || '').trim().toLowerCase();
+  if (brand === 'academy') return BRAND_SELECTOR_THEMES.academy;
+  if (brand === 'invest') return BRAND_SELECTOR_THEMES.invest;
+  if (brand === 'fund') return BRAND_SELECTOR_THEMES.fund;
+  return BRAND_SELECTOR_THEMES.all;
+}
+
+function getShellCssVars(rawBrand, visualSettings = getBrandVisualSettings(rawBrand)) {
+  const baseVars = getBrandCssVars(rawBrand, visualSettings);
+  const shellTheme = getSelectedShellTheme();
+  const accentRgb = hexToRgbString(shellTheme.primary);
+
+  return {
+    ...baseVars,
+    "--brand-accent": shellTheme.primary,
+    "--brand-accent-hover": shellTheme.primaryHover,
+    "--brand-accent-rgb": accentRgb,
+    "--brand-shell-start": shellTheme.backgroundStart,
+    "--brand-shell-end": shellTheme.backgroundEnd,
+    "--focus-ring": `rgba(${accentRgb}, 0.22)`,
+  };
+}
+
 function normalizeBrandDisplayName(rawBrand, value) {
   const clean = String(value || '').trim();
   const brandKey = resolveBrandKey(rawBrand);
@@ -1654,7 +1762,6 @@ function getGlobalBrandFilterLabel() {
 
 function resolveShellBrandKey() {
   if (globalBrandFilter) return resolveBrandKey(globalBrandFilter);
-  if (store.brandId) return resolveBrandKey(store.brandId);
   return 'archer_academy';
 }
 
@@ -1665,7 +1772,7 @@ function syncShellBrandDecor(brandKey = resolveShellBrandKey()) {
   const visualSettings = getBrandVisualSettings(brandKey);
   const theme = getBrandTheme(brandKey);
   appLayout.dataset.brandTheme = brandKey;
-  applyInlineCssVariables(appLayout, getBrandCssVars(brandKey, visualSettings));
+  applyInlineCssVariables(appLayout, getShellCssVars(brandKey, visualSettings));
 
   const sidebarLogo = rootEl.querySelector('.sidebar-logo img');
   if (sidebarLogo) sidebarLogo.src = visualSettings.logo_url?.trim() || theme.logoWordmark;
