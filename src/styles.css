@@ -528,6 +528,12 @@ h1 {
   min-width: 150px;
 }
 
+.filter-reset-btn {
+  align-self: stretch;
+  border: 1px dashed var(--border);
+  color: var(--text-body);
+}
+
 /* Cards & Grid */
 .events-grid {
   display: grid;
@@ -1235,6 +1241,11 @@ textarea:focus-visible {
   .filter-select {
     width: 100%;
     min-width: 0;
+  }
+
+  .filter-reset-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .event-card-footer {

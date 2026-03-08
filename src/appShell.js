@@ -688,6 +688,7 @@ function renderFilters(container, initialEvents) {
       </select>
       <input type="date" id="f-date-from" value="${esc(filters.dateFrom || '')}" class="filter-select">
       <input type="date" id="f-date-to" value="${esc(filters.dateTo || '')}" class="filter-select">
+      <button id="f-reset" class="btn-ghost filter-reset-btn" type="button">Alle filters resetten</button>
     </div>
     <div id="event-list-area"></div>`;
 
@@ -722,6 +723,28 @@ function renderFilters(container, initialEvents) {
   container.querySelector('#f-period').onchange = applyFilters;
   container.querySelector('#f-date-from').onchange = applyFilters;
   container.querySelector('#f-date-to').onchange = applyFilters;
+  container.querySelector('#f-reset').onclick = async () => {
+    filters = { brand: '', search: '', period: '', status: '', dateFrom: '', dateTo: '' };
+    globalBrandFilter = '';
+    syncShellBrandDecor(resolveShellBrandKey());
+
+    const searchEl = container.querySelector('#f-search');
+    const brandEl = container.querySelector('#f-brand');
+    const statusEl = container.querySelector('#f-status');
+    const periodEl = container.querySelector('#f-period');
+    const dateFromEl = container.querySelector('#f-date-from');
+    const dateToEl = container.querySelector('#f-date-to');
+
+    if (searchEl) searchEl.value = '';
+    if (brandEl) brandEl.value = '';
+    if (statusEl) statusEl.value = '';
+    if (periodEl) periodEl.value = '';
+    if (dateFromEl) dateFromEl.value = '';
+    if (dateToEl) dateToEl.value = '';
+
+    await applyFilters();
+    showToast('Filters zijn gereset.', 'success');
+  };
 }
 
 // ─── EVENT LIST ───────────────────────────────────────────────
