@@ -1,35 +1,69 @@
-import { supabase } from "./supabaseClient.js";
 import { renderAppShell } from "./appShell.js";
+import {
+  getVerifiedSession,
+  renderAuthLoading,
+  sendMagicLink,
+  subscribeToAuthState,
+} from "./auth.js";
 import "./styles.css";
 
 const root = document.getElementById("root");
+let currentRender = "loading";
+let unsubscribeAuthListener = null;
 
-function getAuthRedirectUrl() {
-  const envUrl = import.meta.env.VITE_APP_URL?.trim();
-  const base = envUrl || window.location.origin;
-  return base.replace(/\/+$/, "") + "/";
+function showFatalError(message) {
+  if (!root) return;
+  root.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f4f4f4;">
+      <div style="max-width:640px;width:100%;background:#fff;border:1px solid #f0c7cd;border-radius:16px;padding:24px;font-family:Inter,system-ui,-apple-system,sans-serif;">
+        <h2 style="margin:0 0 12px;color:#8f1d2c;">Authenticatie fout</h2>
+        <p style="margin:0;color:#2d3036;">${String(message || "Onbekende fout.")}</p>
+      </div>
+    </div>
+  `;
 }
 
-/* robust auth initialization */
-async function init() {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      renderAppShell(root, session);
-    } else {
-      renderLogin(root);
-    }
+function renderLoginIfNeeded() {
+  if (!root || currentRender === "login") return;
+  currentRender = "login";
+  renderLogin(root);
+}
 
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') renderAppShell(root, session);
-      if (event === 'SIGNED_OUT') renderLogin(root);
+function renderAppIfNeeded(session) {
+  if (!root || !session?.user) return;
+  currentRender = "app";
+  renderAppShell(root, session);
+}
+
+async function bootstrapAuth() {
+  renderAuthLoading(root, "Aan het laden...");
+
+  if (!unsubscribeAuthListener) {
+    unsubscribeAuthListener = subscribeToAuthState((event, session) => {
+      if (event === "SIGNED_OUT") {
+        renderLoginIfNeeded();
+        return;
+      }
+
+      if (session?.user) {
+        renderAppIfNeeded(session);
+      }
     });
-  } catch (err) {
-    root.innerHTML = `<div style="padding:20px;color:red">Application Error: ${err.message}</div>`;
+  }
+
+  try {
+    const session = await getVerifiedSession();
+    if (session?.user) {
+      renderAppIfNeeded(session);
+      return;
+    }
+    renderLoginIfNeeded();
+  } catch (error) {
+    showFatalError(error?.message || "Kon authenticatie niet initialiseren.");
   }
 }
 
-init();
+bootstrapAuth();
 
 function renderLogin(container) {
   const base = import.meta.env.BASE_URL || '/';
@@ -146,7 +180,7 @@ function renderLogin(container) {
                 cursor:pointer;
               "
             >
-              Stuur link
+              Stuur loginlink
             </button>
           </form>
 
@@ -192,20 +226,11 @@ function renderLogin(container) {
     btn.disabled = true;
     btn.textContent = 'Bezig...';
 
-    let error = null;
     try {
-      const result = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: getAuthRedirectUrl() },
-      });
-      error = result.error;
-    } catch (submitError) {
-      error = submitError;
-    }
-
-    if (error) {
+      await sendMagicLink(email);
+    } catch (error) {
       btn.disabled = false;
-      btn.textContent = 'Stuur link';
+      btn.textContent = 'Stuur loginlink';
       headlineEl.textContent = error.message || 'Er ging iets mis. Probeer opnieuw.';
       return;
     }

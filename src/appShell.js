@@ -242,7 +242,6 @@ async function render() {
     await runUiAction(async () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      window.location.reload();
     }, 'Uitloggen mislukt.');
   };
 
