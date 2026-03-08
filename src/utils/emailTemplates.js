@@ -1,27 +1,20 @@
-export function buildInviteEmail({ appName = "Archer Events", inviteLink, firstName } = {}) {
+export function buildInviteEmail({ inviteLink, firstName } = {}) {
   const name = String(firstName || "").trim() || "daar";
   const safeInviteLink = String(inviteLink || "").trim();
-  const subject = `Je uitnodiging voor ${appName}`;
-  const text = [
+  const subject = "Je uitnodiging voor Archer Events";
+  const body = [
     `Hallo ${name},`,
     "",
-    `Je bent uitgenodigd om toegang te krijgen tot ${appName}.`,
-    "Klik op de knop hieronder om je account te activeren en een wachtwoord te kiezen:",
+    "Je bent uitgenodigd om toegang te krijgen tot Archer Events.",
+    "Klik op de link hieronder om je account te activeren en een wachtwoord te kiezen:",
     "",
     safeInviteLink,
     "",
     "Als je deze mail niet verwacht, mag je deze gerust negeren.",
+    "",
+    "Groeten,",
+    "Archer Events",
   ].join("\n");
 
-  const html = `
-    <p>Hallo ${name},</p>
-    <p>Je bent uitgenodigd om toegang te krijgen tot <strong>${appName}</strong>.</p>
-    <p>Klik op de knop hieronder om je account te activeren en een wachtwoord te kiezen:</p>
-    <p><a href="${safeInviteLink}" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#2563eb;color:#fff;text-decoration:none;">Activeer je account</a></p>
-    <p>Werkt de knop niet? Kopieer dan deze link in je browser:</p>
-    <p><code>${safeInviteLink}</code></p>
-    <p>Groeten,<br />Archer Events</p>
-  `;
-
-  return { subject, text, html };
+  return { subject, body };
 }

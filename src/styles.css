@@ -503,6 +503,33 @@ h1 {
 }
 
 /* Filter Bar */
+.event-view-tabs {
+  display: inline-flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  background: #eef2ff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.event-view-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.event-view-tab.active {
+  background: #fff;
+  color: var(--text-heading);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
 .filter-bar {
   display: flex;
   gap: 12px;
@@ -1235,6 +1262,12 @@ textarea:focus-visible {
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+
+  .event-view-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .filter-input,

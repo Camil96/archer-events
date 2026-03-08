@@ -4,12 +4,6 @@ import { createUser, getUserByEmail, getUserById, getUserByInviteToken, updateUs
 
 const INVITE_VALID_DAYS = 7;
 
-function getAppBaseUrl(explicitBaseUrl) {
-  const configured = String(explicitBaseUrl || import.meta.env.VITE_APP_URL || "").trim();
-  if (configured) return configured.replace(/\/+$/, "");
-  return window.location.origin.replace(/\/+$/, "");
-}
-
 function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
@@ -49,8 +43,8 @@ function ensureInviteNotExpired(user) {
   }
 }
 
-function buildInviteLink(appBaseUrl, inviteToken) {
-  const base = String(appBaseUrl || "").replace(/\/+$/, "");
+function buildInviteLink(inviteToken) {
+  const base = String(window.location.origin || "").replace(/\/+$/, "");
   const token = encodeURIComponent(String(inviteToken || "").trim());
   return `${base}/invite?token=${token}`;
 }
@@ -104,14 +98,16 @@ export async function createUserInvite({
     });
   }
 
-  const appUrl = getAppBaseUrl(appBaseUrl || window.location.origin);
-  const inviteLink = buildInviteLink(appUrl, inviteToken);
-  const emailTemplate = buildInviteEmail({
-    appName: "Archer Events",
+  const inviteLink = buildInviteLink(inviteToken);
+  const inviteEmail = buildInviteEmail({
     inviteLink,
     firstName: user.first_name || firstName,
   });
-  // TODO: later automatische verzending koppelen via Supabase Edge Function.
+  const emailTemplate = {
+    ...inviteEmail,
+    text: inviteEmail.body,
+  };
+  // TODO: Stuur deze inviteLink via Supabase Edge Function + mailprovider.
   const emailDelivery = {
     delivered: false,
     mode: "manual_link",
@@ -121,7 +117,7 @@ export async function createUserInvite({
   if (import.meta.env.DEV) {
     console.log("[invite-dev] link:", inviteLink);
     console.log("[invite-dev] e-mail subject:", emailTemplate.subject);
-    console.log("[invite-dev] e-mail body:", emailTemplate.text);
+    console.log("[invite-dev] e-mail body:", emailTemplate.body);
   }
 
   return {

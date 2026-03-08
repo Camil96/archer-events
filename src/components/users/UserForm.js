@@ -91,13 +91,13 @@ export function openUserFormModal({
 
           <p id="uf-error" class="cp-col-span-2" style="margin:0;color:#b91c1c;min-height:1.2em;"></p>
 
-          <div id="uf-invite-result" class="cp-col-span-2" style="display:none;border:1px solid #d6dde6;border-radius:12px;padding:12px;background:#f8f9fc;">
+          <div id="uf-invite-result" class="cp-col-span-2" style="display:none;padding-top:8px;">
             <p style="margin:0 0 8px;font-size:0.86rem;color:#2d3036;">Kopieer deze link en stuur hem via e-mail of chat naar de gebruiker.</p>
-            <div class="cp-inline-input-row" style="margin-bottom:8px;">
-              <input id="uf-invite-link" type="text" readonly value="" />
+            <input id="uf-invite-link" type="text" readonly value="" style="margin-bottom:8px;" />
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <button id="uf-copy-invite" type="button" class="cp-btn cp-btn-ghost">Kopieer link</button>
+              <button id="uf-toggle-email-text" type="button" class="cp-btn-link" style="padding:0;">Toon e-mailtekst</button>
             </div>
-            <button id="uf-toggle-email-text" type="button" class="cp-btn-link" style="padding:0;">Zie e-mailtekst</button>
             <textarea id="uf-email-text" rows="8" readonly style="display:none;margin-top:8px;font-size:0.82rem;"></textarea>
           </div>
         </div>
@@ -152,7 +152,7 @@ export function openUserFormModal({
     inviteLinkInput.value = safeLink;
     emailTextArea.value = [`Onderwerp: ${emailSubject || "Je uitnodiging voor Archer Events"}`, "", emailText || ""].join("\n");
     emailTextArea.style.display = "none";
-    toggleEmailTextButton.textContent = "Zie e-mailtekst";
+    toggleEmailTextButton.textContent = "Toon e-mailtekst";
   };
 
   copyInviteButton?.addEventListener("click", async () => {
@@ -160,7 +160,7 @@ export function openUserFormModal({
     if (!link) return;
     try {
       await navigator.clipboard.writeText(link);
-      showToast("Uitnodigingslink gekopieerd.", "success");
+      showToast("Uitnodigingslink gegenereerd en gekopieerd naar je klembord.", "success");
     } catch {
       setError("Kon de link niet kopieren. Kopieer handmatig uit het veld.");
     }
@@ -169,7 +169,7 @@ export function openUserFormModal({
   toggleEmailTextButton?.addEventListener("click", () => {
     const isHidden = emailTextArea.style.display === "none";
     emailTextArea.style.display = isHidden ? "" : "none";
-    toggleEmailTextButton.textContent = isHidden ? "Verberg e-mailtekst" : "Zie e-mailtekst";
+    toggleEmailTextButton.textContent = isHidden ? "Verberg e-mailtekst" : "Toon e-mailtekst";
   });
 
   submitButton?.addEventListener("click", async () => {
