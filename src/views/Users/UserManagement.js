@@ -12,13 +12,13 @@ const state = {
   latestInvite: null,
 };
 
-function renderLoading() {
-  return '<div class="spinner-wrap"><div class="spinner"></div></div>';
+function getErrorMessage(error, fallback) {
+  const message = String(error?.message || "").trim();
+  return message || fallback;
 }
 
-function toDisplayName(user) {
-  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-  return fullName || "-";
+function renderLoading() {
+  return '<div class="spinner-wrap"><div class="spinner"></div></div>';
 }
 
 function formatDate(value) {
@@ -67,11 +67,24 @@ function statusOptions(selected) {
 async function renderUserTable(container, currentUser) {
   container.innerHTML = renderLoading();
 
-  const users = await listUsers({
-    search: state.search,
-    role: state.role,
-    status: state.status,
-  });
+  let users = [];
+  try {
+    users = await listUsers({
+      search: state.search,
+      role: state.role,
+      status: state.status,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error, "Gebruikers laden mislukt.");
+    container.innerHTML = `
+      <div class="cp-card">
+        <h3>Kon gebruikers niet laden</h3>
+        <p class="muted">${esc(message)}</p>
+      </div>
+    `;
+    showToast(message, "error");
+    return;
+  }
 
   const invitePreview = import.meta.env.DEV && state.latestInvite
     ? `
@@ -122,7 +135,6 @@ async function renderUserTable(container, currentUser) {
             <table class="cp-table">
               <thead>
                 <tr>
-                  <th>Naam</th>
                   <th>E-mail</th>
                   <th>Rol</th>
                   <th>Status</th>
@@ -140,10 +152,6 @@ async function renderUserTable(container, currentUser) {
 
                     return `
                       <tr>
-                        <td>
-                          <strong>${esc(toDisplayName(user))}</strong>
-                          <small>${esc(user.id || "")}</small>
-                        </td>
                         <td>${esc(user.email || "-")}</td>
                         <td>${esc(user.role || "viewer")}</td>
                         <td>${statusBadge(user.status)}</td>
@@ -151,8 +159,8 @@ async function renderUserTable(container, currentUser) {
                         <td>${formatDate(user.created_at)}</td>
                         <td>${formatDate(user.last_sign_in_at || user.updated_at)}</td>
                         <td class="cp-ta-right">
-                          <div class="cp-row-actions cp-row-actions-end">
-                            <button class="cp-btn-link" data-action="edit-user" data-id="${user.id}" type="button">Bewerken</button>
+                          <div class="cp-row-actions cp-row-actions-end" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;opacity:1;visibility:visible;">
+                            <button class="cp-btn-link" data-action="edit-user" data-id="${user.id}" type="button" aria-label="Gebruiker bewerken">Bewerken</button>
                             ${
                               canDisable
                                 ? `<button class="cp-btn-link" data-action="toggle-user" data-id="${user.id}" data-status="${esc(
@@ -162,7 +170,11 @@ async function renderUserTable(container, currentUser) {
                                   }</button>`
                                 : ""
                             }
-                            ${canResend ? `<button class="cp-btn-link" data-action="resend-invite" data-id="${user.id}" type="button">Uitnodiging opnieuw</button>` : ""}
+                            ${
+                              canResend
+                                ? `<button class="cp-btn-link" data-action="resend-invite" data-id="${user.id}" type="button" aria-label="Uitnodiging opnieuw versturen">Uitnodiging opnieuw</button>`
+                                : ""
+                            }
                           </div>
                         </td>
                       </tr>
@@ -241,6 +253,9 @@ function bindEvents(container, users, currentUser) {
 
         state.latestInvite = invite;
         showToast(`Uitnodiging verstuurd naar ${payload.email}.`, "success");
+        if (!invite?.emailDelivery?.delivered) {
+          showToast("Mailservice niet beschikbaar. Kopieer de invite-link hieronder en deel die handmatig.", "warning");
+        }
         if (import.meta.env.DEV && invite?.inviteLink) {
           console.log("[invite-dev] kopieer link:", invite.inviteLink);
         }
@@ -296,14 +311,21 @@ function bindEvents(container, users, currentUser) {
 
   container.querySelectorAll("[data-action='resend-invite']").forEach((button) => {
     button.addEventListener("click", async () => {
-      const userId = button.dataset.id;
-      const invite = await resendUserInvite(userId, { invitedBy: currentUser?.id || null });
-      state.latestInvite = invite;
-      showToast("Uitnodiging opnieuw verstuurd.", "success");
-      if (import.meta.env.DEV && invite?.inviteLink) {
-        console.log("[invite-dev] kopieer link:", invite.inviteLink);
+      try {
+        const userId = button.dataset.id;
+        const invite = await resendUserInvite(userId, { invitedBy: currentUser?.id || null });
+        state.latestInvite = invite;
+        showToast("Uitnodiging opnieuw verstuurd.", "success");
+        if (!invite?.emailDelivery?.delivered) {
+          showToast("Mailservice niet beschikbaar. Kopieer de invite-link hieronder en deel die handmatig.", "warning");
+        }
+        if (import.meta.env.DEV && invite?.inviteLink) {
+          console.log("[invite-dev] kopieer link:", invite.inviteLink);
+        }
+        await renderUserTable(container, currentUser);
+      } catch (error) {
+        showToast(getErrorMessage(error, "Uitnodiging opnieuw versturen mislukt."), "error");
       }
-      await renderUserTable(container, currentUser);
     });
   });
 }

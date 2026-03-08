@@ -13,6 +13,15 @@ function normalizeBrandAccess(value) {
   return list.length ? list : ["academy", "invest", "fund"];
 }
 
+function formatModalError(error) {
+  const message = String(error?.message || "").trim();
+  if (!message) return "Opslaan mislukt. Probeer het opnieuw.";
+  if (message.toLowerCase().includes("schema cache")) {
+    return "Instellingen voor gebruikerskolommen ontbreken nog in Supabase. Voer eerst de SQL-migratie uit.";
+  }
+  return message;
+}
+
 export function openUserFormModal({
   title = "Gebruiker",
   description = "",
@@ -115,7 +124,9 @@ export function openUserFormModal({
   const setPending = (pending) => {
     const isPending = Boolean(pending);
     submitButton.disabled = isPending;
-    submitButton.textContent = isPending ? "Bezig..." : submitLabel;
+    submitButton.innerHTML = isPending
+      ? '<span class="spinner" style="width:14px;height:14px;border-width:2px;margin-right:8px;vertical-align:-2px;"></span>Bezig...'
+      : esc(submitLabel);
   };
 
   submitButton?.addEventListener("click", async () => {
@@ -150,7 +161,7 @@ export function openUserFormModal({
       const keepOpen = await onSubmit?.(payload, { setError, setPending, close });
       if (keepOpen !== false) close();
     } catch (error) {
-      setError(error?.message || "Opslaan mislukt.");
+      setError(formatModalError(error));
       setPending(false);
     }
   });

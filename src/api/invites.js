@@ -1,5 +1,6 @@
 import { buildInviteEmail } from "../utils/emailTemplates.js";
 import { hashPasswordSha256 } from "../utils/passwordHash.js";
+import { supabase } from "../supabaseClient.js";
 import { createUser, getUserByEmail, getUserById, getUserByInviteToken, updateUser } from "./users.js";
 
 const INVITE_VALID_DAYS = 7;
@@ -46,6 +47,49 @@ function ensureInviteNotExpired(user) {
 
   if (expiresAt.getTime() < Date.now()) {
     throw new Error("Deze uitnodiging is verlopen. Vraag een nieuwe uitnodiging aan.");
+  }
+}
+
+function buildInviteLink(appBaseUrl, inviteToken) {
+  const base = String(appBaseUrl || "").replace(/\/+$/, "");
+  const token = encodeURIComponent(String(inviteToken || "").trim());
+  return `${base}/invite?token=${token}`;
+}
+
+export async function sendInviteEmail({ toEmail, firstName, inviteLink, appName = "Archer Events" } = {}) {
+  const cleanEmail = String(toEmail || "").trim().toLowerCase();
+  const cleanInviteLink = String(inviteLink || "").trim();
+  if (!cleanEmail || !cleanInviteLink) {
+    throw new Error("Invite-mail mist ontvanger of link.");
+  }
+
+  const emailPayload = buildInviteEmail({
+    appName,
+    inviteLink: cleanInviteLink,
+    firstName,
+  });
+
+  try {
+    const functionName = String(import.meta.env.VITE_INVITE_EMAIL_FUNCTION || "send-invite-email").trim();
+    const { error } = await supabase.functions.invoke(functionName, {
+      body: {
+        toEmail: cleanEmail,
+        subject: emailPayload.subject,
+        text: emailPayload.text,
+        html: emailPayload.html,
+      },
+    });
+
+    if (error) throw error;
+    return { delivered: true, mode: "edge_function" };
+  } catch (error) {
+    // TODO: production mail delivery via Supabase Edge Function
+    // `send-invite-email` koppelen aan provider (bijv. Resend/SMTP) en secret keys server-side bewaren.
+    if (import.meta.env.DEV) {
+      console.warn("[invite-mail-dev] mailservice niet beschikbaar, gebruik fallback link:", cleanInviteLink, error);
+      return { delivered: false, mode: "dev_fallback", errorMessage: error?.message || "Mailservice niet beschikbaar." };
+    }
+    return { delivered: false, mode: "fallback", errorMessage: error?.message || "Mailservice niet beschikbaar." };
   }
 }
 
@@ -99,25 +143,30 @@ export async function createUserInvite({
   }
 
   const appUrl = getAppBaseUrl(appBaseUrl);
+  const inviteLink = buildInviteLink(appUrl, inviteToken);
   const emailTemplate = buildInviteEmail({
-    appBaseUrl: appUrl,
-    inviteToken,
+    appName: "Archer Events",
+    inviteLink,
     firstName: user.first_name || firstName,
-    brandContext: "Archer Events",
+  });
+  const emailDelivery = await sendInviteEmail({
+    toEmail: cleanEmail,
+    firstName: user.first_name || firstName,
+    inviteLink,
+    appName: "Archer Events",
   });
 
-  // TODO productie: verstuur `emailTemplate` via Supabase Edge Function
-  // (bijv. Resend/SMTP) zodat invite-mails automatisch uitgaan.
   if (import.meta.env.DEV) {
-    console.log("[invite-dev] link:", emailTemplate.inviteLink);
+    console.log("[invite-dev] link:", inviteLink);
   }
 
   return {
     user,
     inviteToken,
     inviteExpiresAt,
-    inviteLink: emailTemplate.inviteLink,
+    inviteLink,
     emailTemplate,
+    emailDelivery,
   };
 }
 

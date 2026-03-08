@@ -146,11 +146,19 @@ function renderShell() {
         <nav class="cp-nav-list">
           ${SECTION_DEFS.map(
             (section) => `
-            <button class="cp-nav-item ${section.id === state.activeSection ? "active" : ""}" data-section="${section.id}">
+            <button
+              class="cp-nav-item ${section.id === state.activeSection ? "active" : ""} ${
+                section.id === "gebruikers" ? "cp-nav-item-users" : ""
+              }"
+              data-section="${section.id}"
+              type="button"
+              aria-current="${section.id === state.activeSection ? "page" : "false"}"
+              style="${section.id === "gebruikers" ? "display:flex;width:100%;text-align:left;align-items:flex-start;" : ""}"
+            >
               <span class="cp-nav-icon">${section.icon}</span>
               <span>
                 <strong>${section.label}</strong>
-                <small>${section.description}</small>
+                <small style="${section.id === "gebruikers" ? "display:block;opacity:0.88;" : ""}">${section.description}</small>
               </span>
             </button>
           `
@@ -217,7 +225,9 @@ function bindShellEvents() {
 
 function syncActiveNavigation() {
   state.root.querySelectorAll(".cp-nav-item").forEach((item) => {
-    item.classList.toggle("active", item.dataset.section === state.activeSection);
+    const isActive = item.dataset.section === state.activeSection;
+    item.classList.toggle("active", isActive);
+    item.setAttribute("aria-current", isActive ? "page" : "false");
   });
 }
 
