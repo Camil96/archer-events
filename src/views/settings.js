@@ -9,6 +9,7 @@ import {
   getBrandLogoWordmark,
   normalizeHexColor,
 } from "../config.js";
+import { DEFAULT_ONLINE_LOCATION_PRESETS } from "../config/locationPresets.js";
 import { store } from "../store.js";
 import { esc, showToast } from "../utils.js";
 
@@ -278,11 +279,12 @@ async function renderOrganisatieSection(container) {
     "physical_location_presets",
     DEFAULT_PHYSICAL_LOCATION_PRESETS
   );
+  const onlinePresetRows = DEFAULT_ONLINE_LOCATION_PRESETS ?? [];
   const bookingOnlinePresets = getSetting(
     settingsRows,
     state.currentBrand,
     "online_location_presets",
-    DEFAULT_ONLINE_LOCATION_PRESETS
+    onlinePresetRows.map((preset) => preset.label).join(", ")
   );
 
   container.innerHTML = `
@@ -379,6 +381,13 @@ async function renderOrganisatieSection(container) {
             )}</textarea>
           </label>
 
+          <label class="cp-field cp-col-span-2">
+            <span>Online locatiepresets (comma-separated)</span>
+            <textarea id="cp-online-location-presets" rows="2" placeholder="Online (Zoom / Teams / Webinar), On-demand toegang (opname)">${esc(
+              bookingOnlinePresets
+            )}</textarea>
+          </label>
+
         </div>
       </article>
 
@@ -426,6 +435,7 @@ async function renderOrganisatieSection(container) {
     const error = await upsertSettings(brandId, [
       ["event_title_presets", container.querySelector("#cp-event-title-presets").value.trim()],
       ["physical_location_presets", container.querySelector("#cp-physical-location-presets").value.trim()],
+      ["online_location_presets", container.querySelector("#cp-online-location-presets").value.trim()],
     ]);
 
     if (error) {
