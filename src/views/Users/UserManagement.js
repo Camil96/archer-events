@@ -1,7 +1,7 @@
 import { getCurrentAppUser } from "../../auth.js";
 import { canManageUsers } from "../../authPermissions.js";
 import { createUserInvite, resendUserInvite } from "../../api/invites.js";
-import { listUsers, toggleUserStatus, updateUser } from "../../api/users.js";
+import { deleteUser, listUsers, toggleUserStatus, updateUser } from "../../api/users.js";
 import { openUserFormModal } from "../../components/users/UserForm.js";
 import { esc, showToast } from "../../utils.js";
 
@@ -15,6 +15,18 @@ const state = {
 function getErrorMessage(error, fallback) {
   const message = String(error?.message || "").trim();
   return message || fallback;
+}
+
+async function copyTextToClipboard(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (!navigator?.clipboard?.writeText) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function renderLoading() {
@@ -64,6 +76,43 @@ function statusOptions(selected) {
     .join("");
 }
 
+function confirmDeleteUser(user) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "cp-modal-overlay";
+    overlay.innerHTML = `
+      <div class="cp-modal" role="dialog" aria-modal="true" aria-label="Gebruiker verwijderen">
+        <header class="cp-modal-head">
+          <div>
+            <h3>Gebruiker verwijderen</h3>
+            <p>Weet je zeker dat je deze gebruiker definitief wilt verwijderen? Dit verwijdert ook zijn uitnodiging en eventuele rechten.</p>
+          </div>
+        </header>
+        <div class="cp-modal-body">
+          <p style="margin:0;color:#2d3036;"><strong>${esc(user?.email || "Onbekende gebruiker")}</strong></p>
+        </div>
+        <footer class="cp-modal-foot">
+          <button class="cp-btn cp-btn-ghost" type="button" data-action="cancel-delete">Annuleren</button>
+          <button class="cp-btn cp-btn-primary" type="button" data-action="confirm-delete" style="background:#c53b45;border-color:#c53b45;">Gebruiker verwijderen</button>
+        </footer>
+      </div>
+    `;
+
+    const close = (result) => {
+      overlay.remove();
+      resolve(result);
+    };
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close(false);
+    });
+
+    overlay.querySelector("[data-action='cancel-delete']")?.addEventListener("click", () => close(false));
+    overlay.querySelector("[data-action='confirm-delete']")?.addEventListener("click", () => close(true));
+    document.body.appendChild(overlay);
+  });
+}
+
 async function renderUserTable(container, currentUser) {
   container.innerHTML = renderLoading();
 
@@ -86,7 +135,7 @@ async function renderUserTable(container, currentUser) {
     return;
   }
 
-  const invitePreview = import.meta.env.DEV && state.latestInvite
+  const invitePreview = state.latestInvite
     ? `
       <article class="cp-card" style="margin-bottom:16px;">
         <header class="cp-card-head">
@@ -141,7 +190,7 @@ async function renderUserTable(container, currentUser) {
                   <th>Merktoegang</th>
                   <th>Uitgenodigd op</th>
                   <th>Laatst actief</th>
-                  <th class="cp-ta-right">Acties</th>
+                  <th class="cp-ta-right um-actions-col">Acties</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,6 +198,7 @@ async function renderUserTable(container, currentUser) {
                   .map((user) => {
                     const canResend = String(user.status || "").toLowerCase() === "invited";
                     const canDisable = String(user.id) !== String(currentUser?.id || "");
+                    const canDelete = String(user.id) !== String(currentUser?.id || "");
 
                     return `
                       <tr>
@@ -158,12 +208,12 @@ async function renderUserTable(container, currentUser) {
                         <td>${esc((user.brand_access || []).join(", ") || "-")}</td>
                         <td>${formatDate(user.created_at)}</td>
                         <td>${formatDate(user.last_sign_in_at || user.updated_at)}</td>
-                        <td class="cp-ta-right">
-                          <div class="cp-row-actions cp-row-actions-end" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;opacity:1;visibility:visible;">
-                            <button class="cp-btn-link" data-action="edit-user" data-id="${user.id}" type="button" aria-label="Gebruiker bewerken">Bewerken</button>
+                        <td class="cp-ta-right um-actions-cell">
+                          <div class="cp-row-actions cp-row-actions-end um-actions">
+                            <button class="cp-btn-link um-action-btn" data-action="edit-user" data-id="${user.id}" type="button" aria-label="Gebruiker bewerken">Bewerken</button>
                             ${
                               canDisable
-                                ? `<button class="cp-btn-link" data-action="toggle-user" data-id="${user.id}" data-status="${esc(
+                                ? `<button class="cp-btn-link um-action-btn" data-action="toggle-user" data-id="${user.id}" data-status="${esc(
                                     user.status || ""
                                   )}" type="button">${
                                     String(user.status || "").toLowerCase() === "disabled" ? "Reactiveren" : "Deactiveren"
@@ -172,8 +222,13 @@ async function renderUserTable(container, currentUser) {
                             }
                             ${
                               canResend
-                                ? `<button class="cp-btn-link" data-action="resend-invite" data-id="${user.id}" type="button" aria-label="Uitnodiging opnieuw versturen">Uitnodiging opnieuw</button>`
+                                ? `<button class="cp-btn-link um-action-btn" data-action="resend-invite" data-id="${user.id}" type="button" aria-label="Uitnodiging opnieuw versturen">Uitnodiging opnieuw</button>`
                                 : ""
+                            }
+                            ${
+                              canDelete
+                                ? `<button class="cp-btn-link cp-btn-link-danger um-action-btn" data-action="delete-user" data-id="${user.id}" type="button" aria-label="Gebruiker verwijderen">Verwijderen</button>`
+                                : `<button class="cp-btn-link cp-btn-link-danger um-action-btn is-disabled" type="button" disabled title="Je kan jezelf niet verwijderen">Verwijderen</button>`
                             }
                           </div>
                         </td>
@@ -252,16 +307,25 @@ function bindEvents(container, users, currentUser) {
         });
 
         state.latestInvite = invite;
-        showToast(`Uitnodiging verstuurd naar ${payload.email}.`, "success");
-        if (!invite?.emailDelivery?.delivered) {
-          showToast("Mailservice niet beschikbaar. Kopieer de invite-link hieronder en deel die handmatig.", "warning");
+        helpers.setInviteResult({
+          inviteLink: invite?.inviteLink || "",
+          emailSubject: invite?.emailTemplate?.subject || "",
+          emailText: invite?.emailTemplate?.text || "",
+        });
+        const copied = await copyTextToClipboard(invite?.inviteLink || "");
+        if (invite?.inviteLink && copied) {
+          showToast("Uitnodigingslink gegenereerd. Link gekopieerd naar clipboard.", "success");
+        } else if (invite?.inviteLink) {
+          showToast("Uitnodigingslink gegenereerd. Kopieer de link handmatig.", "success");
+        } else {
+          showToast("Uitnodigingslink gegenereerd.", "success");
         }
         if (import.meta.env.DEV && invite?.inviteLink) {
           console.log("[invite-dev] kopieer link:", invite.inviteLink);
         }
         await renderUserTable(container, currentUser);
         helpers.setPending(false);
-        return true;
+        return false;
       },
     });
   });
@@ -297,15 +361,19 @@ function bindEvents(container, users, currentUser) {
 
   container.querySelectorAll("[data-action='toggle-user']").forEach((button) => {
     button.addEventListener("click", async () => {
-      const user = users.find((entry) => String(entry.id) === String(button.dataset.id));
-      if (!user) return;
+      try {
+        const user = users.find((entry) => String(entry.id) === String(button.dataset.id));
+        if (!user) return;
 
-      const currentStatus = String(user.status || "").toLowerCase();
-      const nextStatus = currentStatus === "disabled" ? "active" : "disabled";
+        const currentStatus = String(user.status || "").toLowerCase();
+        const nextStatus = currentStatus === "disabled" ? "active" : "disabled";
 
-      await toggleUserStatus(user.id, nextStatus);
-      showToast(nextStatus === "active" ? "Gebruiker geactiveerd." : "Gebruiker gedeactiveerd.", "success");
-      await renderUserTable(container, currentUser);
+        await toggleUserStatus(user.id, nextStatus);
+        showToast(nextStatus === "active" ? "Gebruiker geactiveerd." : "Gebruiker gedeactiveerd.", "success");
+        await renderUserTable(container, currentUser);
+      } catch (error) {
+        showToast(getErrorMessage(error, "Status wijzigen mislukt."), "error");
+      }
     });
   });
 
@@ -315,16 +383,41 @@ function bindEvents(container, users, currentUser) {
         const userId = button.dataset.id;
         const invite = await resendUserInvite(userId, { invitedBy: currentUser?.id || null });
         state.latestInvite = invite;
-        showToast("Uitnodiging opnieuw verstuurd.", "success");
-        if (!invite?.emailDelivery?.delivered) {
-          showToast("Mailservice niet beschikbaar. Kopieer de invite-link hieronder en deel die handmatig.", "warning");
-        }
+        const copied = await copyTextToClipboard(invite?.inviteLink || "");
+        showToast(
+          copied
+            ? "Nieuwe uitnodigingslink gegenereerd. Link gekopieerd naar clipboard."
+            : "Nieuwe uitnodigingslink gegenereerd. Kopieer de link handmatig.",
+          "success"
+        );
         if (import.meta.env.DEV && invite?.inviteLink) {
           console.log("[invite-dev] kopieer link:", invite.inviteLink);
         }
         await renderUserTable(container, currentUser);
       } catch (error) {
         showToast(getErrorMessage(error, "Uitnodiging opnieuw versturen mislukt."), "error");
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-action='delete-user']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const user = users.find((entry) => String(entry.id) === String(button.dataset.id));
+        if (!user) return;
+        if (String(user.id) === String(currentUser?.id || "")) {
+          showToast("Je kan jezelf niet verwijderen.", "warning");
+          return;
+        }
+
+        const confirmed = await confirmDeleteUser(user);
+        if (!confirmed) return;
+
+        await deleteUser(user.id);
+        showToast("Gebruiker verwijderd.", "success");
+        await renderUserTable(container, currentUser);
+      } catch (error) {
+        showToast(getErrorMessage(error, "Gebruiker verwijderen mislukt."), "error");
       }
     });
   });

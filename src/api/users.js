@@ -134,3 +134,12 @@ export async function toggleUserStatus(id, nextStatus = "disabled") {
   const status = normalizeStatus(nextStatus);
   return updateUser(id, { status });
 }
+
+export async function deleteUser(id) {
+  const userId = String(id || "").trim();
+  if (!userId) throw new Error("Gebruiker-ID ontbreekt.");
+
+  const { error } = await supabase.from("app_users").delete().eq("id", userId);
+  if (error) throw mapDatabaseError(error, "Gebruiker verwijderen mislukt.");
+  return true;
+}

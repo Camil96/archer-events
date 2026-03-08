@@ -1,4 +1,4 @@
-import { esc } from "../../utils.js";
+import { esc, showToast } from "../../utils.js";
 
 const ROLE_OPTIONS = ["superadmin", "admin", "operations", "viewer"];
 const BRAND_OPTIONS = [
@@ -90,6 +90,16 @@ export function openUserFormModal({
           </fieldset>
 
           <p id="uf-error" class="cp-col-span-2" style="margin:0;color:#b91c1c;min-height:1.2em;"></p>
+
+          <div id="uf-invite-result" class="cp-col-span-2" style="display:none;border:1px solid #d6dde6;border-radius:12px;padding:12px;background:#f8f9fc;">
+            <p style="margin:0 0 8px;font-size:0.86rem;color:#2d3036;">Kopieer deze link en stuur hem via e-mail of chat naar de gebruiker.</p>
+            <div class="cp-inline-input-row" style="margin-bottom:8px;">
+              <input id="uf-invite-link" type="text" readonly value="" />
+              <button id="uf-copy-invite" type="button" class="cp-btn cp-btn-ghost">Kopieer link</button>
+            </div>
+            <button id="uf-toggle-email-text" type="button" class="cp-btn-link" style="padding:0;">Zie e-mailtekst</button>
+            <textarea id="uf-email-text" rows="8" readonly style="display:none;margin-top:8px;font-size:0.82rem;"></textarea>
+          </div>
         </div>
       </div>
 
@@ -116,6 +126,11 @@ export function openUserFormModal({
 
   const errorEl = overlay.querySelector("#uf-error");
   const submitButton = overlay.querySelector("#uf-submit");
+  const inviteResultEl = overlay.querySelector("#uf-invite-result");
+  const inviteLinkInput = overlay.querySelector("#uf-invite-link");
+  const copyInviteButton = overlay.querySelector("#uf-copy-invite");
+  const toggleEmailTextButton = overlay.querySelector("#uf-toggle-email-text");
+  const emailTextArea = overlay.querySelector("#uf-email-text");
 
   const setError = (message = "") => {
     if (errorEl) errorEl.textContent = String(message || "");
@@ -128,6 +143,34 @@ export function openUserFormModal({
       ? '<span class="spinner" style="width:14px;height:14px;border-width:2px;margin-right:8px;vertical-align:-2px;"></span>Bezig...'
       : esc(submitLabel);
   };
+
+  const setInviteResult = ({ inviteLink = "", emailSubject = "", emailText = "" } = {}) => {
+    const safeLink = String(inviteLink || "").trim();
+    if (!safeLink) return;
+
+    inviteResultEl.style.display = "";
+    inviteLinkInput.value = safeLink;
+    emailTextArea.value = [`Onderwerp: ${emailSubject || "Je uitnodiging voor Archer Events"}`, "", emailText || ""].join("\n");
+    emailTextArea.style.display = "none";
+    toggleEmailTextButton.textContent = "Zie e-mailtekst";
+  };
+
+  copyInviteButton?.addEventListener("click", async () => {
+    const link = String(inviteLinkInput?.value || "").trim();
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast("Uitnodigingslink gekopieerd.", "success");
+    } catch {
+      setError("Kon de link niet kopieren. Kopieer handmatig uit het veld.");
+    }
+  });
+
+  toggleEmailTextButton?.addEventListener("click", () => {
+    const isHidden = emailTextArea.style.display === "none";
+    emailTextArea.style.display = isHidden ? "" : "none";
+    toggleEmailTextButton.textContent = isHidden ? "Verberg e-mailtekst" : "Zie e-mailtekst";
+  });
 
   submitButton?.addEventListener("click", async () => {
     const email = overlay.querySelector("#uf-email")?.value?.trim()?.toLowerCase() || "";
@@ -158,7 +201,7 @@ export function openUserFormModal({
     };
 
     try {
-      const keepOpen = await onSubmit?.(payload, { setError, setPending, close });
+      const keepOpen = await onSubmit?.(payload, { setError, setPending, close, setInviteResult });
       if (keepOpen !== false) close();
     } catch (error) {
       setError(formatModalError(error));

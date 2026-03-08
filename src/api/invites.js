@@ -1,6 +1,5 @@
 import { buildInviteEmail } from "../utils/emailTemplates.js";
 import { hashPasswordSha256 } from "../utils/passwordHash.js";
-import { supabase } from "../supabaseClient.js";
 import { createUser, getUserByEmail, getUserById, getUserByInviteToken, updateUser } from "./users.js";
 
 const INVITE_VALID_DAYS = 7;
@@ -56,43 +55,6 @@ function buildInviteLink(appBaseUrl, inviteToken) {
   return `${base}/invite?token=${token}`;
 }
 
-export async function sendInviteEmail({ toEmail, firstName, inviteLink, appName = "Archer Events" } = {}) {
-  const cleanEmail = String(toEmail || "").trim().toLowerCase();
-  const cleanInviteLink = String(inviteLink || "").trim();
-  if (!cleanEmail || !cleanInviteLink) {
-    throw new Error("Invite-mail mist ontvanger of link.");
-  }
-
-  const emailPayload = buildInviteEmail({
-    appName,
-    inviteLink: cleanInviteLink,
-    firstName,
-  });
-
-  try {
-    const functionName = String(import.meta.env.VITE_INVITE_EMAIL_FUNCTION || "send-invite-email").trim();
-    const { error } = await supabase.functions.invoke(functionName, {
-      body: {
-        toEmail: cleanEmail,
-        subject: emailPayload.subject,
-        text: emailPayload.text,
-        html: emailPayload.html,
-      },
-    });
-
-    if (error) throw error;
-    return { delivered: true, mode: "edge_function" };
-  } catch (error) {
-    // TODO: production mail delivery via Supabase Edge Function
-    // `send-invite-email` koppelen aan provider (bijv. Resend/SMTP) en secret keys server-side bewaren.
-    if (import.meta.env.DEV) {
-      console.warn("[invite-mail-dev] mailservice niet beschikbaar, gebruik fallback link:", cleanInviteLink, error);
-      return { delivered: false, mode: "dev_fallback", errorMessage: error?.message || "Mailservice niet beschikbaar." };
-    }
-    return { delivered: false, mode: "fallback", errorMessage: error?.message || "Mailservice niet beschikbaar." };
-  }
-}
-
 export async function createUserInvite({
   email,
   role = "viewer",
@@ -142,22 +104,24 @@ export async function createUserInvite({
     });
   }
 
-  const appUrl = getAppBaseUrl(appBaseUrl);
+  const appUrl = getAppBaseUrl(appBaseUrl || window.location.origin);
   const inviteLink = buildInviteLink(appUrl, inviteToken);
   const emailTemplate = buildInviteEmail({
     appName: "Archer Events",
     inviteLink,
     firstName: user.first_name || firstName,
   });
-  const emailDelivery = await sendInviteEmail({
-    toEmail: cleanEmail,
-    firstName: user.first_name || firstName,
-    inviteLink,
-    appName: "Archer Events",
-  });
+  // TODO: later automatische verzending koppelen via Supabase Edge Function.
+  const emailDelivery = {
+    delivered: false,
+    mode: "manual_link",
+    message: "Gebruik de invite-link handmatig via e-mail of chat.",
+  };
 
   if (import.meta.env.DEV) {
     console.log("[invite-dev] link:", inviteLink);
+    console.log("[invite-dev] e-mail subject:", emailTemplate.subject);
+    console.log("[invite-dev] e-mail body:", emailTemplate.text);
   }
 
   return {
