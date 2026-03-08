@@ -5,7 +5,7 @@ import {
   createSubtask, updateSubtask, deleteSubtask,
   listParticipants, addParticipant, updateParticipant, deleteParticipant,
   listAttachments, addAttachment, deleteAttachment,
-  listAvailableUsers, getDashboardStats,
+  listAvailableUsers,
   importEventCatalog2026,
   listCateringItems,
   listEventCatering,
@@ -21,10 +21,11 @@ import {
 } from "./store.js";
 import { renderCalendar } from "./calendar.js";
 import { renderSettings } from "./views/settings.js";
+import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcsFile } from "./calendarExport.js";
 
 // Internal styles
 import "./styles.css";
-import { esc, formatDate, downloadCSV, showToast } from "./utils.js";
+import { esc, formatDate, formatDateTime, downloadCSV, showToast } from "./utils.js";
 import {
   getBrandColor,
   getBrandDbValue,
@@ -43,7 +44,7 @@ import {
 // ─── GLOBAL STATE ───────────────────────────────────────────
 let activePage = 'Dashboard';
 let rootEl;
-let filters = { brand: '', search: '', period: '' };
+let filters = { brand: '', search: '', period: '', status: '', dateFrom: '', dateTo: '' };
 let financeFilters = { brand: '', period: 'year', status: '', search: '' };
 let catalogImportStarted = false;
 let brandVisualSettingsById = {};
@@ -229,14 +230,14 @@ async function render() {
   rootEl.querySelectorAll('.nav-item[data-page]').forEach(el => el.onclick = () => {
     closeSidebar();
     activePage = el.dataset.page;
-    filters = { brand: globalBrandFilter || '', search: '', period: '' };
+    filters = { brand: globalBrandFilter || '', search: '', period: '', status: '', dateFrom: '', dateTo: '' };
     render();
   });
 
   rootEl.querySelectorAll('.nav-brand-item').forEach(el => el.onclick = () => {
     closeSidebar();
     globalBrandFilter = el.dataset.brand || '';
-    filters = { brand: globalBrandFilter || '', search: '', period: '' };
+    filters = { brand: globalBrandFilter || '', search: '', period: '', status: '', dateFrom: '', dateTo: '' };
     if (globalBrandFilter) store.brandId = getBrandId(globalBrandFilter);
     activePage = 'Dashboard';
     render();
@@ -338,20 +339,126 @@ async function loadContent() {
 // ─── DASHBOARD ───────────────────────────────────────────────
 async function renderDashboard(container) {
   const activeFilters = getActiveEventFilters();
-  const [stats, events] = await Promise.all([
-    getDashboardStats({ brand: activeFilters.brand }),
-    listEvents(activeFilters)
-  ]);
+  const events = await listEvents(activeFilters);
+  const upcomingEvents = getUpcomingEvents(events, 30);
+  const upcomingParticipants = await fetchUpcomingParticipantsCount(upcomingEvents.map((event) => event.id));
+  const brandCounts = getBrandCountMap(events);
 
   container.innerHTML = `
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-num">${stats.totalEvents}</div><div class="stat-label">Events dit jaar</div></div>
-      <div class="stat-card"><div class="stat-num">${stats.upcomingEvents}</div><div class="stat-label">Komende 30 dagen</div></div>
-      <div class="stat-card"><div class="stat-num">${stats.confirmedParticipants}</div><div class="stat-label">Bevestigde deelnemers</div></div>
-      <div class="stat-card"><div class="stat-num">${stats.openTasks}</div><div class="stat-label">Open taken</div></div>
-    </div>`;
+    <div class="stats-grid dashboard-kpis-grid">
+      <div class="stat-card">
+        <div class="stat-num">${upcomingEvents.length}</div>
+        <div class="stat-label">Komende events (30 dagen)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">${upcomingParticipants}</div>
+        <div class="stat-label">Totaal deelnemers (komend)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">${events.length}</div>
+        <div class="stat-label">Events in huidige selectie</div>
+      </div>
+      <div class="stat-card stat-card-brand-breakdown">
+        <div class="stat-label">Events per merk</div>
+        <div class="brand-kpi-list">
+          <div><span>Academy</span><strong>${brandCounts.Academy}</strong></div>
+          <div><span>Invest</span><strong>${brandCounts.Invest}</strong></div>
+          <div><span>Fund</span><strong>${brandCounts.Fund}</strong></div>
+        </div>
+      </div>
+    </div>
+    ${renderUpcomingTimeline(upcomingEvents)}
+  `;
+
+  container.querySelectorAll('.timeline-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const eventId = item.dataset.eventId;
+      const selected = events.find((event) => String(event.id) === String(eventId));
+      if (selected) openModal(selected);
+    });
+  });
 
   renderFilters(container, events);
+}
+
+function getUpcomingEvents(events = [], daysAhead = 30) {
+  const nowStamp = Date.now();
+  const endStamp = nowStamp + daysAhead * 24 * 60 * 60 * 1000;
+  return (events || [])
+    .filter((event) => {
+      const stamp = new Date(event.start_at || event.event_date || '').getTime();
+      return Number.isFinite(stamp) && stamp >= nowStamp && stamp <= endStamp;
+    })
+    .sort((a, b) => new Date(a.start_at || a.event_date || '').getTime() - new Date(b.start_at || b.event_date || '').getTime());
+}
+
+async function fetchUpcomingParticipantsCount(eventIds = []) {
+  const uniqueEventIds = [...new Set((eventIds || []).filter(Boolean))];
+  if (!uniqueEventIds.length) return 0;
+
+  try {
+    const { count, error } = await supabase
+      .from('event_participants')
+      .select('id', { count: 'exact', head: true })
+      .in('event_id', uniqueEventIds);
+
+    if (error) return 0;
+    return Number(count) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function getBrandCountMap(events = []) {
+  const counts = { Academy: 0, Invest: 0, Fund: 0 };
+
+  (events || []).forEach((event) => {
+    const normalized = getBrandDbValue(event?.brand || '');
+    if (Object.prototype.hasOwnProperty.call(counts, normalized)) {
+      counts[normalized] += 1;
+    }
+  });
+
+  return counts;
+}
+
+function renderUpcomingTimeline(events = []) {
+  if (!events.length) {
+    return `
+      <div class="card timeline-card empty-card">
+        <h3>Komende events</h3>
+        <p class="muted">Nog geen events gepland in de komende 30 dagen.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card timeline-card">
+      <h3>Komende events</h3>
+      <div class="timeline-list">
+        ${events
+          .slice(0, 8)
+          .map((event) => {
+            const brandColor = getBrandColor(event.brand);
+            const brandLabel = getBrandLabel(event.brand);
+            return `
+              <button class="timeline-item" data-event-id="${event.id}" style="--timeline-brand:${esc(brandColor)};">
+                <div class="timeline-item-main">
+                  <strong>${esc(event.title || 'Event')}</strong>
+                  <span class="muted">${esc(formatDateTime(event.start_at || event.event_date))}</span>
+                </div>
+                <div class="timeline-item-meta">
+                  <span class="badge ${getEventStatusBadgeClass(event.status)}">${esc(getEventStatusLabel(event.status))}</span>
+                  <span class="badge badge-brand" style="background:${brandColor}20;color:${brandColor};">${esc(brandLabel)}</span>
+                  <span class="muted">${esc(event.location || 'Locatie volgt')}</span>
+                </div>
+              </button>
+            `;
+          })
+          .join('')}
+      </div>
+    </div>
+  `;
 }
 
 function formatEuro(value) {
@@ -551,16 +658,36 @@ async function renderFinanceOverview(container) {
 
 // ─── FILTERS ─────────────────────────────────────────────────
 function renderFilters(container, initialEvents) {
+  const selectedBrand = filters.brand || globalBrandFilter || '';
+  const academyLabel = getBrandFilterOptionLabel('archer_academy');
+  const investLabel = getBrandFilterOptionLabel('archer_invest');
+  const fundLabel = getBrandFilterOptionLabel('archer_fund');
+
   const filterSection = document.createElement('div');
   filterSection.innerHTML = `
     <div class="filter-bar">
-      <input type="text" id="f-search" placeholder="🔍 Zoeken op titel..." value="${esc(filters.search)}" class="filter-input">
+      <input type="text" id="f-search" placeholder="🔍 Zoek op titel of locatie..." value="${esc(filters.search)}" class="filter-input">
+      <select id="f-brand" class="filter-select">
+        <option value="" ${!selectedBrand ? 'selected' : ''}>Alle merken</option>
+        <option value="Academy" ${selectedBrand === 'Academy' ? 'selected' : ''}>${esc(academyLabel)}</option>
+        <option value="Invest" ${selectedBrand === 'Invest' ? 'selected' : ''}>${esc(investLabel)}</option>
+        <option value="Fund" ${selectedBrand === 'Fund' ? 'selected' : ''}>${esc(fundLabel)}</option>
+      </select>
+      <select id="f-status" class="filter-select">
+        <option value="" ${!filters.status ? 'selected' : ''}>Alle statussen</option>
+        <option value="gepland" ${filters.status === 'gepland' ? 'selected' : ''}>Gepland</option>
+        <option value="bevestigd" ${filters.status === 'bevestigd' ? 'selected' : ''}>Bevestigd</option>
+        <option value="afgerond" ${filters.status === 'afgerond' ? 'selected' : ''}>Afgerond</option>
+        <option value="geannuleerd" ${filters.status === 'geannuleerd' ? 'selected' : ''}>Geannuleerd</option>
+      </select>
       <select id="f-period" class="filter-select">
         <option value="">Alle periodes</option>
         <option value="month" ${filters.period === 'month' ? 'selected' : ''}>Deze maand</option>
         <option value="quarter" ${filters.period === 'quarter' ? 'selected' : ''}>Dit kwartaal</option>
         <option value="year" ${filters.period === 'year' ? 'selected' : ''}>Dit jaar</option>
       </select>
+      <input type="date" id="f-date-from" value="${esc(filters.dateFrom || '')}" class="filter-select">
+      <input type="date" id="f-date-to" value="${esc(filters.dateTo || '')}" class="filter-select">
     </div>
     <div id="event-list-area"></div>`;
 
@@ -569,16 +696,32 @@ function renderFilters(container, initialEvents) {
   renderEventList(listArea, initialEvents);
 
   const applyFilters = async () => {
-    filters.search = container.querySelector('#f-search').value;
-    filters.period = container.querySelector('#f-period').value;
+    filters.search = container.querySelector('#f-search')?.value?.trim() || '';
+    filters.brand = container.querySelector('#f-brand')?.value || '';
+    filters.status = container.querySelector('#f-status')?.value || '';
+    filters.period = container.querySelector('#f-period')?.value || '';
+    filters.dateFrom = container.querySelector('#f-date-from')?.value || '';
+    filters.dateTo = container.querySelector('#f-date-to')?.value || '';
+
+    if (globalBrandFilter !== filters.brand) {
+      globalBrandFilter = filters.brand;
+      if (globalBrandFilter) store.brandId = getBrandId(globalBrandFilter);
+      syncShellBrandDecor(resolveShellBrandKey());
+    }
 
     listArea.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
-    const events = await listEvents(getActiveEventFilters());
-    renderEventList(listArea, events);
+    await runUiAction(async () => {
+      const events = await listEvents(getActiveEventFilters());
+      renderEventList(listArea, events);
+    }, 'Events laden met filters mislukt.');
   };
 
   container.querySelector('#f-search').oninput = applyFilters;
+  container.querySelector('#f-brand').onchange = applyFilters;
+  container.querySelector('#f-status').onchange = applyFilters;
   container.querySelector('#f-period').onchange = applyFilters;
+  container.querySelector('#f-date-from').onchange = applyFilters;
+  container.querySelector('#f-date-to').onchange = applyFilters;
 }
 
 // ─── EVENT LIST ───────────────────────────────────────────────
@@ -742,6 +885,20 @@ async function openModal(event) {
             </div>
           </div>
           <div style="margin-top:16px;"><label>Interne notities</label><textarea id="m-notes" rows="2">${esc(event?.notes_internal || '')}</textarea></div>
+          ${
+            isEdit
+              ? `
+                <div class="calendar-export-panel">
+                  <label>Agenda-integratie</label>
+                  <div class="calendar-export-actions">
+                    <button type="button" id="m-calendar-google" class="btn-secondary">Voeg toe aan Google Calendar</button>
+                    <button type="button" id="m-calendar-outlook" class="btn-secondary">Voeg toe aan Outlook</button>
+                    <button type="button" id="m-calendar-ics" class="btn-secondary">Download .ics</button>
+                  </div>
+                </div>
+              `
+              : ''
+          }
         </div>
 
         ${isEdit ? `
@@ -779,6 +936,16 @@ async function openModal(event) {
   const expectedEl = overlay.querySelector('#m-exp');
   const cateringEl = overlay.querySelector('#m-catering');
   const cateringEstimateEl = overlay.querySelector('#m-catering-estimate');
+
+  const buildCalendarExportEvent = () => ({
+    id: event?.id || null,
+    title: overlay.querySelector('#m-title')?.value?.trim() || event?.title || 'Archer Event',
+    start_at: overlay.querySelector('#m-start')?.value || event?.start_at || event?.event_date || '',
+    end_at: overlay.querySelector('#m-end')?.value || event?.end_at || '',
+    location: overlay.querySelector('#m-loc')?.value?.trim() || event?.location || '',
+    description: event?.description || '',
+    notes_internal: overlay.querySelector('#m-notes')?.value?.trim() || event?.notes_internal || '',
+  });
 
   let modalSettingsRows = settingsRows || [];
   let activeLocationPresets = [];
@@ -972,6 +1139,42 @@ async function openModal(event) {
     rebuildCateringOptions();
   };
 
+  if (isEdit) {
+    const googleBtn = overlay.querySelector('#m-calendar-google');
+    const outlookBtn = overlay.querySelector('#m-calendar-outlook');
+    const icsBtn = overlay.querySelector('#m-calendar-ics');
+
+    if (googleBtn) {
+      googleBtn.onclick = async () => {
+        await runUiAction(async () => {
+          const target = buildCalendarExportEvent();
+          const href = buildGoogleCalendarUrl(target);
+          window.open(href, '_blank', 'noopener,noreferrer');
+        }, 'Google Calendar-link maken mislukt.');
+      };
+    }
+
+    if (outlookBtn) {
+      outlookBtn.onclick = async () => {
+        await runUiAction(async () => {
+          const target = buildCalendarExportEvent();
+          const href = buildOutlookCalendarUrl(target);
+          window.open(href, '_blank', 'noopener,noreferrer');
+        }, 'Outlook-link maken mislukt.');
+      };
+    }
+
+    if (icsBtn) {
+      icsBtn.onclick = async () => {
+        await runUiAction(async () => {
+          const target = buildCalendarExportEvent();
+          downloadIcsFile(target);
+          showToast('ICS-bestand gedownload.', 'success');
+        }, 'ICS-bestand maken mislukt.');
+      };
+    }
+  }
+
   overlay.querySelectorAll('.tab').forEach(t => t.onclick = async () => {
     overlay.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active');
@@ -1024,8 +1227,13 @@ async function openModal(event) {
       return;
     }
     try {
-      if (isEdit) await updateEvent(event.id, payload);
-      else await createEvent(payload);
+      if (isEdit) {
+        await updateEvent(event.id, payload);
+        showToast('Event bijgewerkt.', 'success');
+      } else {
+        await createEvent(payload);
+        showToast('Event aangemaakt.', 'success');
+      }
       close();
     } catch (e) {
       showToast(e.message || 'Opslaan mislukt.', 'error');
@@ -1350,9 +1558,12 @@ function applyInlineCssVariables(element, variables = {}) {
 
 function getActiveEventFilters() {
   return {
-    brand: globalBrandFilter || '',
+    brand: filters.brand || '',
     search: filters.search || '',
     period: filters.period || '',
+    status: filters.status || '',
+    dateFrom: filters.dateFrom || '',
+    dateTo: filters.dateTo || '',
   };
 }
 

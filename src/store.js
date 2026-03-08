@@ -60,6 +60,16 @@ function normalizePeriodFilter(period) {
   return "";
 }
 
+function getStatusFilterValues(rawStatus) {
+  const value = String(rawStatus || "").trim().toLowerCase();
+  if (!value) return [];
+  if (value === "bevestigd" || value === "confirmed") return ["bevestigd", "confirmed"];
+  if (value === "afgerond" || value === "completed" || value === "done") return ["afgerond", "completed", "done"];
+  if (value === "geannuleerd" || value === "cancelled") return ["geannuleerd", "cancelled"];
+  if (value === "gepland" || value === "planned") return ["gepland", "planned"];
+  return [value];
+}
+
 function getPeriodBounds(periodKey) {
   const now = new Date();
 
@@ -219,8 +229,11 @@ function buildEventsQuery(filters = {}, includeOwnerScope = true) {
     query = query.or(`title.ilike.%${filters.search}%,location.ilike.%${filters.search}%`);
   }
 
-  if (filters.status) {
-    query = query.eq("status", String(filters.status).trim().toLowerCase());
+  const statusFilterValues = getStatusFilterValues(filters.status);
+  if (statusFilterValues.length === 1) {
+    query = query.eq("status", statusFilterValues[0]);
+  } else if (statusFilterValues.length > 1) {
+    query = query.in("status", statusFilterValues);
   }
 
   const normalizedPeriod = normalizePeriodFilter(filters.period);
@@ -1211,10 +1224,14 @@ export async function getFinanceOverview(filters = {}) {
     period: filters.period || '',
   });
 
-  const statusFilter = String(filters.status || '').trim().toLowerCase();
+  const statusFilterValues = getStatusFilterValues(filters.status);
   const periodRange = getDateRangeForPeriod(filters.period);
   const filteredEvents = events
-    .filter((event) => !statusFilter || String(event.status || 'gepland').toLowerCase() === statusFilter)
+    .filter((event) => {
+      if (!statusFilterValues.length) return true;
+      const statusValue = String(event.status || 'gepland').trim().toLowerCase();
+      return statusFilterValues.includes(statusValue);
+    })
     .filter((event) => inDateRange(event.start_at, periodRange));
 
   const eventIds = filteredEvents.map((event) => event.id).filter(Boolean);

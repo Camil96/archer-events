@@ -422,6 +422,86 @@ h1 {
   color: var(--text-muted);
 }
 
+.stat-card-brand-breakdown .stat-label {
+  margin-bottom: 10px;
+}
+
+.brand-kpi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brand-kpi-list div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: var(--text-body);
+}
+
+.brand-kpi-list strong {
+  font-size: 1rem;
+  color: var(--text-heading);
+}
+
+.timeline-card {
+  margin-bottom: 24px;
+}
+
+.timeline-card h3 {
+  margin: 0 0 14px;
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.timeline-item {
+  border: 1px solid var(--border-light);
+  border-left: 4px solid var(--timeline-brand, var(--primary));
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.timeline-item:hover {
+  border-color: var(--border);
+  background: var(--brand-surface-alt);
+}
+
+.timeline-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.timeline-item-main strong {
+  font-size: 0.98rem;
+  color: var(--text-heading);
+}
+
+.timeline-item-main .muted {
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+.timeline-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
 /* Filter Bar */
 .filter-bar {
   display: flex;
@@ -505,6 +585,21 @@ h1 {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.calendar-export-panel {
+  margin-top: 16px;
+}
+
+.calendar-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.calendar-export-actions .btn-secondary {
+  min-height: 40px;
 }
 
 /* Admin Grid */
@@ -1124,10 +1219,41 @@ textarea:focus-visible {
     gap: 14px;
   }
 
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .filter-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .filter-input,
+  .filter-select {
+    width: 100%;
+    min-width: 0;
+  }
+
   .event-card-footer {
     flex-wrap: wrap;
     gap: 8px;
     align-items: flex-start;
+  }
+
+  .timeline-item-main {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .timeline-item-main .muted {
+    white-space: normal;
+  }
+
+  .calendar-export-actions .btn-secondary {
+    width: 100%;
   }
 
   .modal-overlay {
