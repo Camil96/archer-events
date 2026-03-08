@@ -22,6 +22,7 @@ import {
 import { renderCalendar } from "./calendar.js";
 import { renderSettings } from "./views/settings.js";
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcsFile } from "./calendarExport.js";
+import { getCurrentAppUser, logoutAppUser } from "./auth.js";
 
 // Internal styles
 import "./styles.css";
@@ -95,7 +96,7 @@ export function renderAppShell(root, session) {
   rootEl = root;
   setStoreAuthContext({
     userId: session?.user?.id || null,
-    role: session?.user?.user_metadata?.role || "viewer",
+    role: session?.user?.role || session?.user?.user_metadata?.role || "viewer",
   });
   render().catch((error) => {
     console.error("App shell render failed:", error);
@@ -246,8 +247,7 @@ async function render() {
   // Logout
   rootEl.querySelector('#logout').onclick = async () => {
     await runUiAction(async () => {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      logoutAppUser();
     }, 'Uitloggen mislukt.');
   };
 
@@ -2401,8 +2401,7 @@ async function renderAttachmentsTab(container, eventId) {
       return;
     }
     await runUiAction(async () => {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
+      const user = getCurrentAppUser();
 
       await addAttachment({
         event_id: eventId,
